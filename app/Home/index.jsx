@@ -1,46 +1,88 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useNavigation } from "expo-router";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+// 1. Import Context and Modal
+import ProModal from "../../components/ProModal";
+import { useMembership } from "../contexts/MembershipContext";
 
 export default function Home() {
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
-    const [color, setColor] = useState("green");
-    const viewRef = useRef(null);
+    // 2. Get Membership Status
+    const { isPro } = useMembership();
+    const [modalVisible, setModalVisible] = useState(false);
+
     const openDrawer = () => {
         navigation.toggleDrawer();
     };
 
-    const goTo = page => {
-        navigation.navigate(page);
+    // 3. Updated Navigation Handler
+    const handleNavigation = (page, isLocked) => {
+        if (isLocked) {
+            setModalVisible(true);
+        } else {
+            navigation.navigate(page);
+        }
+    };
+
+    // Handler for the Modal's "Go Pro" button
+    const handleGoPro = () => {
+        setModalVisible(false);
+        navigation.navigate("membership");
     };
 
     return (
         <>
-            <View style={{ ...styles.container }}>
+            <View style={styles.container}>
+                {/* Row 1 */}
                 <View style={styles.pagesContainer}>
-                    <TouchableOpacity style={styles.card} onPress={() => goTo("tests")}>
+                    <TouchableOpacity style={styles.card} onPress={() => handleNavigation("tests", false)}>
                         <MaterialCommunityIcons name="lightbulb-question" size={80} color="#81B64C" />
                         <Text style={styles.cardText}>Tests</Text>
                     </TouchableOpacity>
-                    <View style={styles.card} onTouchEnd={() => goTo("learn")}>
+
+                    <TouchableOpacity style={styles.card} onPress={() => handleNavigation("learn", false)}>
                         <Ionicons name="book" size={80} color="#81B64C" />
                         <Text style={styles.cardText}>Learn</Text>
-                    </View>
-                </View>
-                <View style={styles.pagesContainer}>
-                    <TouchableOpacity style={styles.card} onPress={() => goTo("Bookmarks")}>
-                        <Ionicons name="bookmarks" size={80} color="#81B64C" />
-                        <Text style={styles.cardText}>Bookmarks</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.card} onPress={() => goTo("options")}>
+                </View>
+
+                {/* Row 2 */}
+                <View style={styles.pagesContainer}>
+                    {/* --- BOOKMARKS TILE (Locked logic applied here) --- */}
+                    <TouchableOpacity
+                        style={[styles.card, !isPro && styles.cardLocked]}
+                        onPress={() => handleNavigation("Bookmarks", !isPro)}
+                        activeOpacity={0.7}
+                    >
+                        {!isPro ? (
+                            // Locked State Visuals
+                            <View style={styles.lockedContent}>
+                                <View style={styles.lockCircle}>
+                                    <Ionicons name="lock-closed" size={40} color="#888" />
+                                </View>
+                                <Text style={styles.lockedLabel}>PRO</Text>
+                            </View>
+                        ) : (
+                            // Unlocked State Visuals
+                            <Ionicons name="bookmarks" size={80} color="#81B64C" />
+                        )}
+                        <Text style={[styles.cardText, !isPro && styles.textLocked]}>Bookmarks</Text>
+                    </TouchableOpacity>
+                    {/* -------------------------------------------------- */}
+
+                    <TouchableOpacity style={styles.card} onPress={() => handleNavigation("options", false)}>
                         <Ionicons name="options" size={80} color="#81B64C" />
                         <Text style={styles.cardText}>Options</Text>
                     </TouchableOpacity>
                 </View>
             </View>
+
+            {/* 4. Add Pro Modal */}
+            <ProModal visible={modalVisible} onClose={() => setModalVisible(false)} onGoPro={handleGoPro} />
         </>
     );
 }
@@ -50,66 +92,6 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: "center",
         backgroundColor: "#2C2B29",
-    },
-
-    header: {
-        height: 100,
-        width: "100%",
-        // position: "absolute",
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#2d2c2cff",
-    },
-    headerIcon: {
-        width: 100,
-        height: 100,
-        justifyContent: "center",
-        alignItems: "center",
-        display: "flex",
-        marginRight: 10,
-    },
-
-    headerInfo: {
-        height: 80,
-        flex: 1,
-        flexDirection: "column",
-        justifyContent: "center",
-    },
-    headerSubInfo: {
-        flex: 1,
-        flexDirection: "row",
-        alignItems: "center",
-    },
-    hamburger: {
-        height: 40,
-        width: 60,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    userName: {
-        fontSize: 18,
-        fontWeight: "500",
-        color: "#4e4444ff",
-    },
-    tag: {
-        width: 60,
-        height: 25,
-        backgroundColor: "#4e4444ff",
-        borderRadius: 10,
-        justifyContent: "center",
-        alignItems: "center",
-        flexDirection: "row",
-        marginRight: 10,
-    },
-    tagText: {
-        color: "white",
-        marginLeft: 5,
-    },
-    animatable: {
-        width: 200,
-        height: 40,
-        // backgroundColor: "blue",
-        borderRadius: 10,
     },
     pagesContainer: {
         height: "45%",
@@ -137,15 +119,38 @@ const styles = StyleSheet.create({
         shadowRadius: 3.84,
         elevation: 25,
     },
-    background: {
-        position: "absolute",
-        left: 0,
-        right: 0,
-        top: 0,
-        height: "110%",
-        borderTopLeftRadius: 25,
-        borderTopRightRadius: 25,
+    // --- New Locked Styles ---
+    cardLocked: {
+        borderColor: "#555", // Grey border instead of green
+        backgroundColor: "#2a2927",
+        shadowColor: "#000", // Remove green glow
+        shadowOpacity: 0.1,
     },
+    lockedContent: {
+        alignItems: "center",
+        justifyContent: "center",
+        height: 80, // Matches the icon size to keep layout stable
+    },
+    lockCircle: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        borderWidth: 2,
+        borderColor: "#555",
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 5,
+    },
+    lockedLabel: {
+        color: "#888",
+        fontSize: 10,
+        fontWeight: "bold",
+        letterSpacing: 1,
+    },
+    textLocked: {
+        color: "#888", // Dim text
+    },
+    // -------------------------
     cardText: {
         marginTop: 15,
         fontSize: 18,

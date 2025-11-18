@@ -2,26 +2,29 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { useNavigation } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native"; // Removed Alert
+import LearnTopicItem from "../../components/LearnTopicItem";
+import { useMembership } from "../contexts/MembershipContext";
 import { LANGUAGE_LEVELS as tests } from "../services/mockData";
-// 1. Import your new component
-import LearnTopicItem from "../../components/LearnTopicItem"; // <-- Adjust path as needed
+// 1. Import Modal
+import ProModal from "../../components/ProModal";
 
 const LEVEL_KEY = "@JustLearn:selectedLevel";
 
 const Learn = () => {
     const navigation = useNavigation();
+    const { isPro } = useMembership();
 
     const [loading, setLoading] = useState(true);
     const [topicsToDisplay, setTopicsToDisplay] = useState([]);
     const [currentLevelTitle, setCurrentLevelTitle] = useState("");
     const [viewableItems, setViewableItems] = useState(new Set());
 
-    // 2. We use useFocusEffect to reload the level
-    //    and reset animations every time
+    // 2. Add Modal State
+    const [modalVisible, setModalVisible] = useState(false);
+
     useFocusEffect(
         useCallback(() => {
-            // Clear list to force re-animation
             setTopicsToDisplay([]);
             setViewableItems(new Set());
 
@@ -50,26 +53,40 @@ const Learn = () => {
         }, [])
     );
 
-    const goToFlashcards = testTopic => {
+    // 3. Updated Handler
+    const goToFlashcards = (testTopic, isLocked) => {
+        if (isLocked) {
+            setModalVisible(true); // Show Modal
+            return;
+        }
         navigation.navigate(`FlashcardScreen`, { questions: testTopic.questions });
     };
 
-    // 3. New handler for when viewable items change
+    // 4. Handler for Modal Action
+    const handleGoProNav = () => {
+        setModalVisible(false);
+        navigation.navigate("membership");
+    };
+
     const onViewableItemsChanged = useCallback(({ viewableItems }) => {
         const newViewableKeys = new Set(viewableItems.map(item => item.key));
         setViewableItems(newViewableKeys);
     }, []);
 
-    // 4. New renderItem function for the FlatList
     const renderTopicItem = useCallback(
-        ({ item }) => (
-            <LearnTopicItem
-                item={item}
-                onPress={() => goToFlashcards(item)}
-                isViewable={viewableItems.has(item.id)} // Pass viewability status
-            />
-        ),
-        [viewableItems]
+        ({ item, index }) => {
+            const isLocked = !isPro && index > 0;
+
+            return (
+                <LearnTopicItem
+                    item={item}
+                    onPress={() => goToFlashcards(item, isLocked)}
+                    isViewable={viewableItems.has(item.id)}
+                    isLocked={isLocked}
+                />
+            );
+        },
+        [viewableItems, isPro]
     );
 
     if (loading) {
@@ -81,7 +98,6 @@ const Learn = () => {
     }
 
     return (
-        // 5. Replaced ScrollView with FlatList
         <View style={styles.container}>
             <Text style={styles.titleText}>{currentLevelTitle}</Text>
             {topicsToDisplay.length > 0 ? (
@@ -95,10 +111,14 @@ const Learn = () => {
                     viewabilityConfig={{
                         itemVisiblePercentThreshold: 20,
                     }}
+                    extraData={isPro}
                 />
             ) : (
                 <Text style={styles.noTopicsText}>No topics found for this level.</Text>
             )}
+
+            {/* 5. Render Modal */}
+            <ProModal visible={modalVisible} onClose={() => setModalVisible(false)} onGoPro={handleGoProNav} />
         </View>
     );
 };
