@@ -2,167 +2,178 @@ import { Ionicons } from "@expo/vector-icons";
 import { DarkTheme, ThemeProvider } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Drawer } from "expo-router/drawer";
+import React from "react";
 import { Image, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import "react-native-gesture-handler";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import CustomDrawerContent from "../components/customDrawerContent";
 
-import React from "react";
+// Import the new Context Provider and Hook
+import { MembershipProvider, useMembership } from "./contexts/MembershipContext";
+
+// --- Components utilizing the Context ---
 
 const GoProButton = () => {
     const router = useRouter();
+    const { isPro } = useMembership(); // <--- Listen to status
+
     const handlePress = () => {
-        // This navigates to the 'membership' screen.
-        // You will need to define this route in your layout.
+        // If already PRO, maybe show settings or do nothing.
+        // For now, we only navigate if they are NOT pro, or let them manage sub.
         router.push("/membership");
     };
 
     return (
-        <TouchableOpacity style={styles.container} onPress={handlePress}>
-            <Ionicons name="rocket-outline" size={16} color="#FFFFFF" />
-            <Text style={styles.text}>GO PRO</Text>
+        <TouchableOpacity style={[styles.container]} onPress={handlePress}>
+            {/* Change Icon based on status */}
+            <Ionicons name={isPro ? "checkmark-circle" : "rocket-outline"} size={16} color="#FFFFFF" />
+            {/* Change Text based on status */}
+            <Text style={styles.text}>{isPro ? "PRO" : "GO PRO"}</Text>
         </TouchableOpacity>
     );
 };
 
-function LogoTitle() {
+const HeaderLeftActions = () => {
+    const { toggleMembership } = useMembership(); // <--- Access toggle function
+
     return (
-        <Image
-            style={{ width: 120, height: 50, resizeMode: "contain" }}
-            source={require("../assets/images/logo.png")} // <-- Your logo
-        />
+        <View style={styles.headerLeftContainer}>
+            {/* Avatar */}
+            <TouchableOpacity onPress={() => {}}>
+                <Image style={styles.avatar} source={require("../assets/images/deutschland.png")} />
+            </TouchableOpacity>
+
+            {/* Diamond Toggle Button */}
+            <TouchableOpacity style={{ marginLeft: 15 }} onPress={toggleMembership}>
+                <Ionicons name="diamond-sharp" size={24} color="#81B64C" />
+            </TouchableOpacity>
+        </View>
     );
-}
+};
+
+const LogoTitle = () => (
+    <Image style={{ width: 120, height: 50, resizeMode: "contain" }} source={require("../assets/images/logo.png")} />
+);
 
 const MyDarkTheme = {
-    ...DarkTheme, // Start with the default dark theme values
+    ...DarkTheme,
     colors: {
         ...DarkTheme.colors,
-        // This is the crucial part that fixes the flash:
-        background: "#2C2B29", // <-- Your app's dark background
-        // You can also set card (header) and text colors here
-        card: "#2C2B29", // Sets header background
-        text: "#FFFFFF", // Sets header text color
+        background: "#2C2B29",
+        card: "#2C2B29",
+        text: "#FFFFFF",
     },
 };
 
+// --- Main Layout ---
+
 export default function Layout() {
     return (
-        <ThemeProvider value={MyDarkTheme}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-                <StatusBar
-                    backgroundColor="#2C2B29" // Your desired background color
-                    barStyle="light-content" // "light-content" for light text/icons
-                    translucent={false} // <-- This is the most important part
-                />
-                <Drawer
-                    drawerContent={CustomDrawerContent}
-                    screenOptions={{
-                        drawerHideStatusBarOnOpen: true,
-                        drawerActiveBackgroundColor: "#81B64C",
-                        drawerLabelStyle: { color: "#fff", fontSize: 16, fontWeight: "500" },
-                        drawerActiveTintColor: "#fff",
-                        drawerInactiveTintColor: "#fff",
-                        headerStyle: {
-                            backgroundColor: "#2C2B29", // Your desired header color
-                        },
-                        headerLeft: () => (
-                            <View style={styles.headerLeftContainer}>
-                                {/* Avatar */}
-                                <TouchableOpacity onPress={() => {}}>
-                                    <Image
-                                        style={styles.avatar}
-                                        source={require("../assets/images/deutschland.png")} // <-- Your avatar
-                                    />
-                                </TouchableOpacity>
-
-                                {/* Action Button */}
-                                <TouchableOpacity style={{ marginLeft: 15 }} onPress={() => alert("Search pressed!")}>
-                                    <Ionicons name="diamond-sharp" size={24} color="#81B64C" />
-                                </TouchableOpacity>
-                            </View>
-                        ),
-                        headerTintColor: "#81B64C", // Tints the title and back button
-                        headerTitle: () => <LogoTitle />,
-                        headerTitleAlign: "center",
-                        headerRight: () => <GoProButton />,
-                    }}
-                >
-                    <Drawer.Screen
-                        name="Home" // This is the name of the page and must match the url from root
-                        options={{
-                            drawerLabel: "Home",
-                            title: "Home Page",
-                            drawerIcon: ({ size, color }) => <Ionicons name="home-outline" size={size} color={color} />,
+        <MembershipProvider>
+            <ThemeProvider value={MyDarkTheme}>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                    <StatusBar backgroundColor="#2C2B29" barStyle="light-content" translucent={false} />
+                    <Drawer
+                        drawerContent={CustomDrawerContent}
+                        screenOptions={{
+                            drawerHideStatusBarOnOpen: true,
+                            drawerActiveBackgroundColor: "#81B64C",
+                            drawerLabelStyle: { color: "#fff", fontSize: 16, fontWeight: "500" },
+                            drawerActiveTintColor: "#fff",
+                            drawerInactiveTintColor: "#fff",
+                            headerStyle: {
+                                backgroundColor: "#2C2B29",
+                            },
+                            // Use the component that consumes the context
+                            headerLeft: () => <HeaderLeftActions />,
+                            headerTintColor: "#81B64C",
+                            headerTitle: () => <LogoTitle />,
+                            headerTitleAlign: "center",
+                            // Use the component that consumes the context
+                            headerRight: () => <GoProButton />,
                         }}
-                    />
-                    <Drawer.Screen
-                        name="Bookmarks" // This is the name of the page and must match the url from root
-                        options={{
-                            drawerLabel: "Bookmarks",
-                            title: "Bookmarks Page",
-                            drawerIcon: ({ size, color }) => (
-                                <Ionicons name="bookmark-outline" size={size} color={color} />
-                            ),
-                        }}
-                    />
-                    <Drawer.Screen
-                        name="membership" // This is the name of the page and must match the url from root
-                        options={{
-                            drawerLabel: "membership",
-                            title: "membership Page",
-                            drawerIcon: ({ size, color }) => (
-                                <Ionicons name="bookmark-outline" size={size} color={color} />
-                            ),
-                        }}
-                    />
-                    <Drawer.Screen
-                        name="Statistics" // This is the name of the page and must match the url from root
-                        options={{
-                            drawerLabel: "Statistics",
-                            title: "Statistics Page",
-                            drawerIcon: ({ size, color }) => (
-                                <Ionicons name="stats-chart-outline" size={size} color={color} />
-                            ),
-                        }}
-                    />
-                    <Drawer.Screen
-                        name="Settings" // This is the name of the page and must match the url from root
-                        options={{
-                            drawerLabel: "Settings",
-                            title: "Settings Page",
-                            drawerIcon: ({ size, color }) => (
-                                <Ionicons name="settings-outline" size={size} color={color} />
-                            ),
-                        }}
-                    />
-                </Drawer>
-            </GestureHandlerRootView>
-        </ThemeProvider>
+                    >
+                        <Drawer.Screen
+                            name="Home"
+                            options={{
+                                drawerLabel: "Home",
+                                title: "Home Page",
+                                drawerIcon: ({ size, color }) => (
+                                    <Ionicons name="home-outline" size={size} color={color} />
+                                ),
+                            }}
+                        />
+                        <Drawer.Screen
+                            name="Bookmarks"
+                            options={{
+                                drawerLabel: "Bookmarks",
+                                title: "Bookmarks Page",
+                                drawerIcon: ({ size, color }) => (
+                                    <Ionicons name="bookmark-outline" size={size} color={color} />
+                                ),
+                            }}
+                        />
+                        <Drawer.Screen
+                            name="membership"
+                            options={{
+                                drawerLabel: "membership",
+                                title: "membership Page",
+                                drawerIcon: ({ size, color }) => (
+                                    <Ionicons name="card-outline" size={size} color={color} />
+                                ),
+                            }}
+                        />
+                        <Drawer.Screen
+                            name="Statistics"
+                            options={{
+                                drawerLabel: "Statistics",
+                                title: "Statistics Page",
+                                drawerIcon: ({ size, color }) => (
+                                    <Ionicons name="stats-chart-outline" size={size} color={color} />
+                                ),
+                            }}
+                        />
+                        <Drawer.Screen
+                            name="Settings"
+                            options={{
+                                drawerLabel: "Settings",
+                                title: "Settings Page",
+                                drawerIcon: ({ size, color }) => (
+                                    <Ionicons name="settings-outline" size={size} color={color} />
+                                ),
+                            }}
+                        />
+                    </Drawer>
+                </GestureHandlerRootView>
+            </ThemeProvider>
+        </MembershipProvider>
     );
 }
+
 const styles = StyleSheet.create({
     headerLeftContainer: {
         flexDirection: "row",
         alignItems: "center",
-        paddingLeft: 10, // Add some padding
+        paddingLeft: 10,
     },
     avatar: {
         width: 36,
         height: 36,
         borderRadius: 18,
     },
-    icon: {
-        marginLeft: 15,
-    },
     container: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#81B64C", // Your app's green
+        backgroundColor: "#81B64C",
         paddingVertical: 6,
         paddingHorizontal: 12,
         borderRadius: 10,
         marginRight: 15,
+    },
+    containerPro: {
+        backgroundColor: "#2C2B29", // Optional: Different style when PRO (e.g. blend in)
+        borderWidth: 1,
+        borderColor: "#81B64C",
     },
     text: {
         color: "white",
