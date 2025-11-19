@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import CustomDrawerContent from "../components/customDrawerContent";
 
 // Import the new Context Provider and Hook
+import { AuthProvider } from "./contexts/AuthContext";
 import { MembershipProvider, useMembership } from "./contexts/MembershipContext";
 
 // --- Components utilizing the Context ---
@@ -69,84 +70,86 @@ const MyDarkTheme = {
 
 export default function Layout() {
     return (
-        <MembershipProvider>
-            <ThemeProvider value={MyDarkTheme}>
-                <GestureHandlerRootView style={{ flex: 1 }}>
-                    <StatusBar backgroundColor="#2C2B29" barStyle="light-content" translucent={false} />
-                    <Drawer
-                        drawerContent={CustomDrawerContent}
-                        screenOptions={{
-                            drawerHideStatusBarOnOpen: true,
-                            drawerActiveBackgroundColor: "#81B64C",
-                            drawerLabelStyle: { color: "#fff", fontSize: 16, fontWeight: "500" },
-                            drawerActiveTintColor: "#fff",
-                            drawerInactiveTintColor: "#fff",
-                            headerStyle: {
-                                backgroundColor: "#2C2B29",
-                            },
-                            // Use the component that consumes the context
-                            headerLeft: () => <HeaderLeftActions />,
-                            headerTintColor: "#81B64C",
-                            headerTitle: () => <LogoTitle />,
-                            headerTitleAlign: "center",
-                            // Use the component that consumes the context
-                            headerRight: () => <GoProButton />,
-                        }}
-                    >
-                        <Drawer.Screen
-                            name="Home"
-                            options={{
-                                drawerLabel: "Home",
-                                title: "Home Page",
-                                drawerIcon: ({ size, color }) => (
-                                    <Ionicons name="home-outline" size={size} color={color} />
-                                ),
+        <AuthProvider>
+            <MembershipProvider>
+                <ThemeProvider value={MyDarkTheme}>
+                    <GestureHandlerRootView style={{ flex: 1 }}>
+                        <StatusBar backgroundColor="#2C2B29" barStyle="light-content" translucent={false} />
+                        <Drawer
+                            drawerContent={CustomDrawerContent}
+                            screenOptions={{
+                                drawerHideStatusBarOnOpen: true,
+                                drawerActiveBackgroundColor: "#81B64C",
+                                drawerLabelStyle: { color: "#fff", fontSize: 16, fontWeight: "500" },
+                                drawerActiveTintColor: "#fff",
+                                drawerInactiveTintColor: "#fff",
+                                headerStyle: {
+                                    backgroundColor: "#2C2B29",
+                                },
+                                // Use the component that consumes the context
+                                headerLeft: () => <HeaderLeftActions />,
+                                headerTintColor: "#81B64C",
+                                headerTitle: () => <LogoTitle />,
+                                headerTitleAlign: "center",
+                                // Use the component that consumes the context
+                                headerRight: () => <GoProButton />,
                             }}
-                        />
-                        <Drawer.Screen
-                            name="Bookmarks"
-                            options={{
-                                drawerLabel: "Bookmarks",
-                                title: "Bookmarks Page",
-                                drawerIcon: ({ size, color }) => (
-                                    <Ionicons name="bookmark-outline" size={size} color={color} />
-                                ),
-                            }}
-                        />
-                        <Drawer.Screen
-                            name="membership"
-                            options={{
-                                drawerLabel: "membership",
-                                title: "membership Page",
-                                drawerIcon: ({ size, color }) => (
-                                    <Ionicons name="card-outline" size={size} color={color} />
-                                ),
-                            }}
-                        />
-                        <Drawer.Screen
-                            name="Statistics"
-                            options={{
-                                drawerLabel: "Statistics",
-                                title: "Statistics Page",
-                                drawerIcon: ({ size, color }) => (
-                                    <Ionicons name="stats-chart-outline" size={size} color={color} />
-                                ),
-                            }}
-                        />
-                        <Drawer.Screen
-                            name="Settings"
-                            options={{
-                                drawerLabel: "Settings",
-                                title: "Settings Page",
-                                drawerIcon: ({ size, color }) => (
-                                    <Ionicons name="settings-outline" size={size} color={color} />
-                                ),
-                            }}
-                        />
-                    </Drawer>
-                </GestureHandlerRootView>
-            </ThemeProvider>
-        </MembershipProvider>
+                        >
+                            <Drawer.Screen
+                                name="Home"
+                                options={{
+                                    drawerLabel: "Home",
+                                    title: "Home Page",
+                                    drawerIcon: ({ size, color }) => (
+                                        <Ionicons name="home-outline" size={size} color={color} />
+                                    ),
+                                }}
+                            />
+                            <Drawer.Screen
+                                name="Bookmarks"
+                                options={{
+                                    drawerLabel: "Bookmarks",
+                                    title: "Bookmarks Page",
+                                    drawerIcon: ({ size, color }) => (
+                                        <Ionicons name="bookmark-outline" size={size} color={color} />
+                                    ),
+                                }}
+                            />
+                            <Drawer.Screen
+                                name="membership"
+                                options={{
+                                    drawerLabel: "membership",
+                                    title: "membership Page",
+                                    drawerIcon: ({ size, color }) => (
+                                        <Ionicons name="card-outline" size={size} color={color} />
+                                    ),
+                                }}
+                            />
+                            <Drawer.Screen
+                                name="Statistics"
+                                options={{
+                                    drawerLabel: "Statistics",
+                                    title: "Statistics Page",
+                                    drawerIcon: ({ size, color }) => (
+                                        <Ionicons name="stats-chart-outline" size={size} color={color} />
+                                    ),
+                                }}
+                            />
+                            <Drawer.Screen
+                                name="Settings"
+                                options={{
+                                    drawerLabel: "Settings",
+                                    title: "Settings Page",
+                                    drawerIcon: ({ size, color }) => (
+                                        <Ionicons name="settings-outline" size={size} color={color} />
+                                    ),
+                                }}
+                            />
+                        </Drawer>
+                    </GestureHandlerRootView>
+                </ThemeProvider>
+            </MembershipProvider>
+        </AuthProvider>
     );
 }
 

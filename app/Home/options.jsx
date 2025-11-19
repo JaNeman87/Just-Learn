@@ -1,25 +1,26 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics"; // Added Haptics
-import { useEffect, useRef, useState } from "react";
-// 1. Import TouchableOpacity and AsyncStorage
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"; // Added Alert
 import Carousel, { Pagination } from "react-native-snap-carousel";
+import { useAuth } from "../contexts/AuthContext"; // Import Auth Hook
 
-// 2. Add a key for AsyncStorage
 const LEVEL_KEY = "@JustLearn:selectedLevel";
-
-// Get the screen width
 const { width: screenWidth } = Dimensions.get("window");
 
 const Options = () => {
+    const router = useRouter();
+    const { isGuest, logout } = useAuth(); // Get auth state
+
     const [entries, setEntries] = useState([
         {
             title: "A1",
             description: "You can understand and use familiar, everyday expressions and very basic phrases.",
             level: "Beginner",
             color: "rgba(0, 122, 255, 1)",
-            checked: false, // Set default to false, storage will update it
+            checked: false,
         },
         {
             title: "A2",
@@ -47,25 +48,22 @@ const Options = () => {
     const [activeIndex, setActiveIndex] = useState(0);
     const carouselRef = useRef(null);
 
-    // 3. Load the saved level when the component mounts
     useEffect(() => {
         const loadSelectedLevel = async () => {
             try {
                 const savedLevel = await AsyncStorage.getItem(LEVEL_KEY);
-                let savedIndex = 0; // Default to 0
+                let savedIndex = 0;
 
                 if (savedLevel) {
                     const newEntries = entries.map((entry, index) => {
                         const isChecked = entry.title === savedLevel;
                         if (isChecked) {
-                            savedIndex = index; // Find the index of the saved level
+                            savedIndex = index;
                         }
                         return { ...entry, checked: isChecked };
                     });
                     setEntries(newEntries);
 
-                    // Snap the carousel to the saved item
-                    // Use setTimeout to ensure carousel is ready
                     setTimeout(() => {
                         if (carouselRef.current) {
                             carouselRef.current.snapToItem(savedIndex);
@@ -73,13 +71,12 @@ const Options = () => {
                         }
                     }, 50);
                 } else {
-                    // No level saved, default to A1
                     const newEntries = entries.map((entry, index) => ({
                         ...entry,
-                        checked: index === 0, // Check A1 by default
+                        checked: index === 0,
                     }));
                     setEntries(newEntries);
-                    await AsyncStorage.setItem(LEVEL_KEY, "A1"); // Save A1 as default
+                    await AsyncStorage.setItem(LEVEL_KEY, "A1");
                 }
             } catch (e) {
                 console.error("Failed to load selected level", e);
@@ -87,26 +84,18 @@ const Options = () => {
         };
 
         loadSelectedLevel();
-    }, []); // Empty array means this runs only once on mount
+    }, []);
 
-    // 4. Handle the card press
     const handleCardPress = async (item, index) => {
         try {
-            // Give haptic feedback
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-            // 1. Save to AsyncStorage
             await AsyncStorage.setItem(LEVEL_KEY, item.title);
-
-            // 2. Update state to reflect the new checkmark
             setEntries(prevEntries =>
                 prevEntries.map(entry => ({
                     ...entry,
                     checked: entry.title === item.title,
                 }))
             );
-
-            // 3. Snap the carousel to the clicked item
             if (carouselRef.current && index !== activeIndex) {
                 carouselRef.current.snapToItem(index);
             }
@@ -115,24 +104,24 @@ const Options = () => {
         }
     };
 
+    const handleLogout = () => {
+        Alert.alert("Log Out", "Are you sure you want to log out?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Log Out", style: "destructive", onPress: logout },
+        ]);
+    };
+
     const _renderItem = ({ item, index }) => {
         return (
-            // 5. Changed View to TouchableOpacity
-            <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => handleCardPress(item, index)} // Added onPress
-            >
+            <TouchableOpacity activeOpacity={0.9} onPress={() => handleCardPress(item, index)}>
                 <View style={styles.slide}>
                     <View style={styles.upperHalf}>
-                        <View style={styles.iconContainer}>
-                            {/* <Entypo name="language" size={120} color="#81B64C" /> */}
-                        </View>
+                        <View style={styles.iconContainer}></View>
                         <Text style={styles.title}>{item.title}</Text>
                     </View>
                     <View style={styles.lowerHalf}>
                         <Text style={styles.descriptionBig}>{item.level}</Text>
                         <Text style={styles.description}>{item.description}</Text>
-                        {/* This is now dynamic based on state */}
                         {item.checked && (
                             <View style={styles.checkmarkContainer}>
                                 <Ionicons name="checkmark-circle" size={40} color="#81B64C" />
@@ -173,6 +162,22 @@ const Options = () => {
                 inactiveDotOpacity={0.4}
                 inactiveDotScale={0.6}
             />
+
+            {/* --- NEW AUTH BUTTON --- */}
+            <TouchableOpacity
+                style={[styles.authButton, isGuest ? styles.loginButton : styles.logoutButton]}
+                onPress={isGuest ? () => router.push("/Home/Auth") : handleLogout}
+            >
+                <Ionicons
+                    name={isGuest ? "log-in-outline" : "log-out-outline"}
+                    size={24}
+                    color="#FFF"
+                    style={{ marginRight: 10 }}
+                />
+                <Text style={styles.authButtonText}>{isGuest ? "Log In / Sign Up" : "Log Out"}</Text>
+            </TouchableOpacity>
+
+            <View style={{ height: 40 }} />
         </ScrollView>
     );
 };
@@ -259,5 +264,33 @@ const styles = StyleSheet.create({
         position: "absolute",
         bottom: -10,
         right: -10,
+    },
+    // --- New Styles ---
+    authButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 15,
+        paddingHorizontal: 40,
+        borderRadius: 25,
+        marginTop: 20,
+        borderWidth: 1,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 5,
+    },
+    loginButton: {
+        backgroundColor: "#81B64C", // Green for login
+        borderColor: "#81B64C",
+    },
+    logoutButton: {
+        backgroundColor: "#383633", // Dark grey for logout
+        borderColor: "#555",
+    },
+    authButtonText: {
+        color: "#FFF",
+        fontSize: 18,
+        fontWeight: "bold",
     },
 });

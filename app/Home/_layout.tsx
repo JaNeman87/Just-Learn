@@ -25,6 +25,12 @@ export default function HomeStackLayout() {
                 }}
             />
             <Stack.Screen
+                name="Auth"
+                options={{
+                    title: "Auth",
+                }}
+            />
+            <Stack.Screen
                 name="Bookmarks"
                 options={{
                     title: "Bookmarks",
