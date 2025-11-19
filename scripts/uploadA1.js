@@ -1,3 +1,9 @@
+// scripts/uploadA1.js
+require("dotenv").config({ path: ".env" }); // Make sure you have 'dotenv' installed
+const { createClient } = require("@supabase/supabase-js");
+
+// 1. Hardcode your A1 data here (or import it if you convert A1.js to CommonJS)
+// Ideally, paste the content of 'const A1 = { ... }' here.
 const A1 = {
     title: "A1: Beginner",
     description: "Understand basic, everyday phrases.",
@@ -1521,4 +1527,54 @@ const A1 = {
     ],
 };
 
-export default A1;
+// 2. Init Supabase (use SERVICE_ROLE key to bypass RLS for writing)
+// You need to add EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY to your .env for this script
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const uploadData = async () => {
+    console.log("🚀 Starting upload for Level A1...");
+
+    // A. Upload Level
+    const { error: levelError } = await supabase.from("levels").upsert({
+        id: "A1",
+        title: A1.title,
+        description: A1.description,
+    });
+    if (levelError) return console.error("Level Error:", levelError);
+
+    for (const test of A1.tests) {
+        console.log(`  📂 Uploading Test: ${test.title}`);
+
+        // B. Upload Test
+        const { error: testError } = await supabase.from("tests").upsert({
+            id: test.id,
+            level_id: "A1",
+            title: test.title,
+        });
+        if (testError) console.error("    Test Error:", testError);
+
+        // C. Upload Questions
+        const questionsPayload = test.questions.map((q, index) => {
+            // Separate common fields from specific "content" fields
+            const { id, questionText, type = "standard", ...rest } = q;
+
+            return {
+                id: q.id,
+                test_id: test.id,
+                question_text: questionText,
+                type: type,
+                sort_order: index,
+                content: rest, // Stores options, pairs, correctSentence, etc.
+            };
+        });
+
+        const { error: qError } = await supabase.from("questions").upsert(questionsPayload);
+        if (qError) console.error("    Question Error:", qError);
+    }
+
+    console.log("✅ A1 Upload Complete!");
+};
+
+uploadData();

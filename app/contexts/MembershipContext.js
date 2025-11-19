@@ -1,34 +1,44 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useContext, useEffect, useState } from "react";
 import { Alert } from "react-native";
-import { supabase } from "../../lib/supabase"; // Ensure this path matches your file structure
+import { supabase } from "../../lib/supabase";
 import { useAuth } from "./AuthContext";
 
 const MembershipContext = createContext();
 
 export const MembershipProvider = ({ children }) => {
-    const { user, isGuest } = useAuth(); // Get current user status
+    const { user, isGuest } = useAuth();
     const [isPro, setIsPro] = useState(false);
 
-    // 1. SYNC: Load status from Supabase when User changes (Login/App Start)
+    // 1. SYNC: Load status
     useEffect(() => {
         const loadStatus = async () => {
             try {
-                // A. Always load local status first (Instant UI load)
+                // --- FIX: IF GUEST, FORCE FREE ---
+                // This ensures that logging out (becoming a guest) instantly locks content.
+                if (isGuest) {
+                    setIsPro(false);
+                    await AsyncStorage.setItem("user_membership_status", "FREE");
+                    return; // Stop here
+                }
+
+                // --- LOGGED IN LOGIC ---
+
+                // A. Load from Local Storage first (Optimistic UI)
                 const localStatus = await AsyncStorage.getItem("user_membership_status");
                 let currentStatus = localStatus === "PRO";
 
-                // B. If User is Logged In (Not Guest), check the Database
-                if (user && !isGuest) {
+                // B. Check the Database for the "Truth"
+                if (user) {
                     const { data, error } = await supabase
                         .from("profiles")
                         .select("is_pro")
                         .eq("id", user.id)
-                        .maybeSingle(); // Use maybeSingle to avoid errors if row is missing
+                        .maybeSingle();
 
                     if (data) {
                         currentStatus = data.is_pro;
-                        // Update local storage to match the Database truth
+                        // Sync local storage to match the Database truth
                         await AsyncStorage.setItem("user_membership_status", currentStatus ? "PRO" : "FREE");
                     }
                 }
@@ -40,24 +50,21 @@ export const MembershipProvider = ({ children }) => {
         };
 
         loadStatus();
-    }, [user, isGuest]); // Re-run this when user logs in/out
+    }, [user, isGuest]); // Re-runs when user changes (e.g. Logout)
 
     // 2. TOGGLE: Restricted to Signed In Users
     const toggleMembership = async () => {
-        // CHECK: Block Guests
         if (isGuest) {
             Alert.alert("Dev Access Denied", "You must be signed in to toggle the Pro status.");
-            return; // Stop execution here
+            return;
         }
 
         try {
             const newStatus = !isPro;
 
-            // A. Update State & Local Storage immediately
             setIsPro(newStatus);
             await AsyncStorage.setItem("user_membership_status", newStatus ? "PRO" : "FREE");
 
-            // B. Save to Supabase
             if (user) {
                 const { error } = await supabase.from("profiles").upsert({
                     id: user.id,

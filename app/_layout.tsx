@@ -105,16 +105,7 @@ export default function Layout() {
                                     ),
                                 }}
                             />
-                            <Drawer.Screen
-                                name="Bookmarks"
-                                options={{
-                                    drawerLabel: "Bookmarks",
-                                    title: "Bookmarks Page",
-                                    drawerIcon: ({ size, color }) => (
-                                        <Ionicons name="bookmark-outline" size={size} color={color} />
-                                    ),
-                                }}
-                            />
+
                             <Drawer.Screen
                                 name="membership"
                                 options={{

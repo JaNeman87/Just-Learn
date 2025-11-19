@@ -1,3 +1,8 @@
+// scripts/uploadA2.js
+require("dotenv").config({ path: ".env" });
+const { createClient } = require("@supabase/supabase-js");
+
+// --- 1. YOUR A2 DATA ---
 const A2 = {
     title: "A2: Elementary",
     description: "Communicate in simple, routine tasks.",
@@ -9298,4 +9303,52 @@ const A2 = {
     ],
 };
 
-export default A2;
+// --- 2. UPLOAD LOGIC ---
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const uploadData = async () => {
+    console.log("🚀 Starting upload for Level A2...");
+
+    // A. Upload Level
+    const { error: levelError } = await supabase.from("levels").upsert({
+        id: "A2",
+        title: A2.title,
+        description: A2.description,
+    });
+    if (levelError) return console.error("Level Error:", levelError);
+
+    for (const test of A2.tests) {
+        console.log(`  📂 Uploading Test: ${test.title}`);
+
+        // B. Upload Test
+        const { error: testError } = await supabase.from("tests").upsert({
+            id: test.id,
+            level_id: "A2",
+            title: test.title,
+        });
+        if (testError) console.error("    Test Error:", testError);
+
+        // C. Upload Questions
+        const questionsPayload = test.questions.map((q, index) => {
+            const { id, questionText, type = "standard", ...rest } = q;
+
+            return {
+                id: q.id,
+                test_id: test.id,
+                question_text: questionText,
+                type: type,
+                sort_order: index,
+                content: rest,
+            };
+        });
+
+        const { error: qError } = await supabase.from("questions").upsert(questionsPayload);
+        if (qError) console.error("    Question Error:", qError);
+    }
+
+    console.log("✅ A2 Upload Complete!");
+};
+
+uploadData();

@@ -1,3 +1,8 @@
+// scripts/uploadB1.js
+require("dotenv").config({ path: ".env" });
+const { createClient } = require("@supabase/supabase-js");
+
+// --- 1. YOUR B1 DATA ---
 const B1 = {
     title: "B1: Intermediate",
     description:
@@ -7,7 +12,6 @@ const B1 = {
             id: "B1-T1",
             title: "Test 1: Reisen, Präteritum & Konjunktiv II",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B1-T1-Q1",
                     type: "standard",
@@ -329,13 +333,12 @@ const B1 = {
                     correctSentence: ["Ich", "konnte", "nicht", "kommen", "weil", "ich", "arbeiten", "musste"],
                     options: ["musste", "arbeiten", "ich", "weil", "kommen", "nicht", "konnte", "Ich", "war"],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B1-T2",
             title: "Test 2: Arbeitswelt & Medien",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B1-T2-Q1",
                     type: "standard",
@@ -659,13 +662,12 @@ const B1 = {
                     correctSentence: ["Ich", "würde", "gern", "in", "einem", "internationalen", "Team", "arbeiten"],
                     options: ["arbeiten", "Team", "internationalen", "einem", "in", "gern", "würde", "Ich", "in"],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B1-T3",
             title: "Test 3: Kultur & Freizeit",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B1-T3-Q1",
                     type: "standard",
@@ -1046,13 +1048,12 @@ const B1 = {
                     correctSentence: ["Das", "neue", "Stadion", "wurde", "letzten", "Monat", "eröffnet"],
                     options: ["eröffnet", "Monat", "letzten", "wurde", "Stadion", "neue", "Das", "hat"],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B1-T4",
             title: "Test 4: Umwelt & Gesellschaft",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B1-T4-Q1",
                     type: "standard",
@@ -1376,13 +1377,12 @@ const B1 = {
                     correctSentence: ["Trotz", "des", "hohen", "Preises", "hat", "er", "die", "Jacke", "gekauft"],
                     options: ["gekauft", "Jacke", "die", "er", "hat", "Preises", "hohen", "des", "Trotz", "Wegen"],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B1-T5",
             title: "Test 5: Beziehungen & Soziales Leben",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B1-T5-Q1",
                     type: "standard",
@@ -1683,13 +1683,12 @@ const B1 = {
                     correctSentence: ["Er", "träumt", "von", "einem", "langen", "Urlaub", "am", "Meer"],
                     options: ["Meer", "am", "Urlaub", "langen", "einem", "von", "träumt", "Er", "einen"],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B1-T6",
             title: "Test 6: B1 Gemischte Wiederholung",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B1-T6-Q1",
                     type: "standard",
@@ -2013,9 +2012,57 @@ const B1 = {
                     correctSentence: ["Das", "Fenster", "wurde", "von", "dem", "Jungen", "geöffnet"],
                     options: ["geöffnet", "Jungen", "dem", "von", "wurde", "Fenster", "Das", "ist"],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
     ],
 };
 
-export default B1;
+// --- 2. UPLOAD LOGIC ---
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const uploadData = async () => {
+    console.log("🚀 Starting upload for Level B1...");
+
+    // A. Upload Level
+    const { error: levelError } = await supabase.from("levels").upsert({
+        id: "B1",
+        title: B1.title,
+        description: B1.description,
+    });
+    if (levelError) return console.error("Level Error:", levelError);
+
+    for (const test of B1.tests) {
+        console.log(`  📂 Uploading Test: ${test.title}`);
+
+        // B. Upload Test
+        const { error: testError } = await supabase.from("tests").upsert({
+            id: test.id,
+            level_id: "B1",
+            title: test.title,
+        });
+        if (testError) console.error("    Test Error:", testError);
+
+        // C. Upload Questions
+        const questionsPayload = test.questions.map((q, index) => {
+            const { id, questionText, type = "standard", ...rest } = q;
+
+            return {
+                id: q.id,
+                test_id: test.id,
+                question_text: questionText,
+                type: type,
+                sort_order: index,
+                content: rest,
+            };
+        });
+
+        const { error: qError } = await supabase.from("questions").upsert(questionsPayload);
+        if (qError) console.error("    Question Error:", qError);
+    }
+
+    console.log("✅ B1 Upload Complete!");
+};
+
+uploadData();

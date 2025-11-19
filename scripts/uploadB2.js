@@ -1,3 +1,8 @@
+// scripts/uploadB2.js
+require("dotenv").config({ path: ".env" });
+const { createClient } = require("@supabase/supabase-js");
+
+// --- 1. YOUR B2 DATA ---
 const B2 = {
     title: "B2: Upper-Intermediate",
     description:
@@ -7,7 +12,6 @@ const B2 = {
             id: "B2-T1",
             title: "Test 1: Arbeit, Zukunft & Konjunktiv I",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B2-T1-Q1",
                     type: "standard",
@@ -308,13 +312,12 @@ const B2 = {
                     correctSentence: ["Sie", "sagte", "sie", "sei", "gestern", "sehr", "müde", "gewesen"],
                     options: ["gewesen", "müde", "sehr", "gestern", "sei", "sie", "sagte", "Sie", "war"],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B2-T2",
             title: "Test 2: Bildung, Medien & Gesellschaft",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B2-T2-Q1",
                     type: "standard",
@@ -662,13 +665,12 @@ const B2 = {
                         "dessen",
                     ],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B2-T3",
             title: "Test 3: Umwelt, Technologie & Gesellschaft",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B2-T3-Q1",
                     type: "standard",
@@ -1003,13 +1005,12 @@ const B2 = {
                     correctSentence: ["Das", "ist", "der", "Politiker", "dessen", "Rede", "so", "lang", "war"],
                     options: ["war", "lang", "so", "Rede", "dessen", "Politiker", "der", "ist", "Das", "deren"],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B2-T4",
             title: "Test 4: Politik, Gesellschaft & Globale Themen",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B2-T4-Q1",
                     type: "standard",
@@ -1396,13 +1397,12 @@ const B2 = {
                         "den",
                     ],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B2-T5",
             title: "Test 5: Kultur, Geschichte & Literatur",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B2-T5-Q1",
                     type: "standard",
@@ -1747,13 +1747,12 @@ const B2 = {
                     correctSentence: ["Der", "Brief", "ist", "schon", "geschickt", "worden"],
                     options: ["worden", "geschickt", "schon", "ist", "Brief", "Der", "wurde"],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
         {
             id: "B2-T6",
             title: "Test 6: B2 Gemischte Wiederholung",
             questions: [
-                // --- SHUFFLED ARRAY OF ALL 30 QUESTIONS ---
                 {
                     id: "B2-T6-Q1",
                     type: "standard",
@@ -2106,9 +2105,57 @@ const B2 = {
                         "oder",
                     ],
                 },
-            ].sort(() => Math.random() - 0.5), // Shuffles the 30 questions
+            ],
         },
     ],
 };
 
-export default B2;
+// --- 2. UPLOAD LOGIC ---
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const uploadData = async () => {
+    console.log("🚀 Starting upload for Level B2...");
+
+    // A. Upload Level
+    const { error: levelError } = await supabase.from("levels").upsert({
+        id: "B2",
+        title: B2.title,
+        description: B2.description,
+    });
+    if (levelError) return console.error("Level Error:", levelError);
+
+    for (const test of B2.tests) {
+        console.log(`  📂 Uploading Test: ${test.title}`);
+
+        // B. Upload Test
+        const { error: testError } = await supabase.from("tests").upsert({
+            id: test.id,
+            level_id: "B2",
+            title: test.title,
+        });
+        if (testError) console.error("    Test Error:", testError);
+
+        // C. Upload Questions
+        const questionsPayload = test.questions.map((q, index) => {
+            const { id, questionText, type = "standard", ...rest } = q;
+
+            return {
+                id: q.id,
+                test_id: test.id,
+                question_text: questionText,
+                type: type,
+                sort_order: index,
+                content: rest,
+            };
+        });
+
+        const { error: qError } = await supabase.from("questions").upsert(questionsPayload);
+        if (qError) console.error("    Question Error:", qError);
+    }
+
+    console.log("✅ B2 Upload Complete!");
+};
+
+uploadData();
