@@ -41,7 +41,7 @@ const HeaderLeftActions = () => {
         <View style={styles.headerLeftContainer}>
             {/* Avatar */}
             <TouchableOpacity onPress={() => {}}>
-                <Image style={styles.avatar} source={require("../assets/images/deutschland.png")} />
+                <Ionicons name="person-circle-outline" size={40} color="#81B64C" />
             </TouchableOpacity>
 
             {/* Diamond Toggle Button */}

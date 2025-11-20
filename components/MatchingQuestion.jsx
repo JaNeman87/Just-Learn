@@ -1,3 +1,5 @@
+
+
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, Vibration, View } from "react-native";
 import * as Animatable from "react-native-animatable";
@@ -11,45 +13,72 @@ const MatchingQuestion = ({ question, onComplete }) => {
 
     const [selectedLeft, setSelectedLeft] = useState(null);
     const [selectedRight, setSelectedRight] = useState(null);
-    const [matchedIds, setMatchedIds] = useState([]);
+    
+    // --- CHANGED: Track matched IDs separately for left and right columns ---
+    // This allows matching Left ID '1' with Right ID '2' if they have the same text.
+    const [matchedLeftIds, setMatchedLeftIds] = useState([]);
+    const [matchedRightIds, setMatchedRightIds] = useState([]);
+    
     const [isError, setIsError] = useState(false);
 
     const leftRefs = useRef({});
     const rightRefs = useRef({});
 
-    // Initialize (Unchanged)
+    // Initialize
     useEffect(() => {
         const leftItems = question.pairs.map(p => ({ id: p.id, text: p.de }));
         const rightItems = question.pairs.map(p => ({ id: p.id, text: p.en }));
 
         setLeftColumn(shuffle(leftItems));
         setRightColumn(shuffle(rightItems));
-        setMatchedIds([]);
+        
+        // Reset state
+        setMatchedLeftIds([]);
+        setMatchedRightIds([]);
         setIsError(false);
         setSelectedLeft(null);
         setSelectedRight(null);
     }, [question]);
 
-    // Check match logic (Unchanged)
+    // Check match logic
     useEffect(() => {
         if (selectedLeft && selectedRight) {
             handleMatchAttempt(selectedLeft, selectedRight);
         }
     }, [selectedLeft, selectedRight]);
 
-    // Handle match attempt (Unchanged)
     const handleMatchAttempt = (leftId, rightId) => {
-        if (leftId === rightId) {
+        // 1. Get the actual text of the selected cards
+        const leftItem = leftColumn.find(i => i.id === leftId);
+        const rightItem = rightColumn.find(i => i.id === rightId);
+
+        if (!leftItem || !rightItem) return;
+
+        // 2. Check if this text combination exists in the allowed pairs
+        // This fixes the "duplicate text" issue. We don't care about ID equality anymore, 
+        // we care if the text forms a valid pair.
+        const isValidMatch = question.pairs.some(pair => 
+            pair.de === leftItem.text && pair.en === rightItem.text
+        );
+
+        if (isValidMatch) {
             // --- MATCH! ---
             Vibration.vibrate(50);
             leftRefs.current[leftId]?.pulse(500);
             rightRefs.current[rightId]?.pulse(500);
-            const newMatched = [...matchedIds, leftId];
-            setMatchedIds(newMatched);
+
+            // Add specific IDs to their respective matched lists
+            const newLeftMatches = [...matchedLeftIds, leftId];
+            const newRightMatches = [...matchedRightIds, rightId];
+
+            setMatchedLeftIds(newLeftMatches);
+            setMatchedRightIds(newRightMatches);
+            
             setSelectedLeft(null);
             setSelectedRight(null);
             setIsError(false);
-            if (newMatched.length === question.pairs.length) {
+
+            if (newLeftMatches.length === question.pairs.length) {
                 setTimeout(() => onComplete(true), 500);
             }
         } else {
@@ -66,9 +95,14 @@ const MatchingQuestion = ({ question, onComplete }) => {
         }
     };
 
-    // Style Logic (Unchanged)
     const getCardStyle = (itemId, side) => {
-        if (matchedIds.includes(itemId)) return styles.cardMatched;
+        // Check the correct array based on side
+        const isMatched = side === "left" 
+            ? matchedLeftIds.includes(itemId) 
+            : matchedRightIds.includes(itemId);
+
+        if (isMatched) return styles.cardMatched;
+
         const isSelected = (side === "left" ? selectedLeft : selectedRight) === itemId;
         if (isSelected) {
             if (isError) return styles.cardError;
@@ -77,25 +111,22 @@ const MatchingQuestion = ({ question, onComplete }) => {
         return styles.card;
     };
 
-    // --- DELETED renderColumn FUNCTION ---
-
     return (
         <View style={styles.container}>
             <Text style={styles.instruction}>{question.questionText}</Text>
 
-            {/* --- 1. RENDER AS ROWS, NOT COLUMNS --- */}
             <View style={styles.pairsContainer}>
                 {leftColumn.map((leftItem, index) => {
                     const rightItem = rightColumn[index];
 
-                    // This check is just a safeguard
+                    // Safety check
                     if (!rightItem) return null;
 
                     return (
                         <View key={leftItem.id} style={styles.rowContainer}>
                             {/* --- Left Card --- */}
                             <Animatable.View
-                                style={{ flex: 1 }} // Make animatable view flexible
+                                style={{ flex: 1 }}
                                 ref={el => (leftRefs.current[leftItem.id] = el)}
                             >
                                 <TouchableOpacity
@@ -104,7 +135,7 @@ const MatchingQuestion = ({ question, onComplete }) => {
                                         if (isError) return;
                                         setSelectedLeft(leftItem.id);
                                     }}
-                                    disabled={matchedIds.includes(leftItem.id)}
+                                    disabled={matchedLeftIds.includes(leftItem.id)}
                                 >
                                     <Text style={styles.cardText}>{leftItem.text}</Text>
                                 </TouchableOpacity>
@@ -115,7 +146,7 @@ const MatchingQuestion = ({ question, onComplete }) => {
 
                             {/* --- Right Card --- */}
                             <Animatable.View
-                                style={{ flex: 1 }} // Make animatable view flexible
+                                style={{ flex: 1 }}
                                 ref={el => (rightRefs.current[rightItem.id] = el)}
                             >
                                 <TouchableOpacity
@@ -124,7 +155,7 @@ const MatchingQuestion = ({ question, onComplete }) => {
                                         if (isError) return;
                                         setSelectedRight(rightItem.id);
                                     }}
-                                    disabled={matchedIds.includes(rightItem.id)}
+                                    disabled={matchedRightIds.includes(rightItem.id)}
                                 >
                                     <Text style={styles.cardText}>{rightItem.text}</Text>
                                 </TouchableOpacity>
@@ -141,7 +172,6 @@ const styles = StyleSheet.create({
     container: { width: "100%", alignItems: "center" },
     instruction: { color: "#fff", fontSize: 18, marginBottom: 20, fontWeight: "bold" },
 
-    // --- 2. UPDATED STYLES ---
     pairsContainer: {
         width: "100%",
     },
@@ -149,18 +179,16 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         justifyContent: "space-between",
         width: "100%",
-        marginBottom: 10, // This was on cardBase before
+        marginBottom: 10,
     },
     cardBase: {
-        flex: 1, // This makes the card fill its half of the row
+        flex: 1, 
         padding: 15,
         borderRadius: 8,
-        // alignItems: "center",
-        justifyContent: "center", // This centers the text vertically
+        justifyContent: "center",
         borderWidth: 2,
         minHeight: 60,
     },
-    // --- End Updated Styles ---
 
     card: {
         backgroundColor: "#383633",
@@ -168,7 +196,7 @@ const styles = StyleSheet.create({
     },
     cardSelected: {
         backgroundColor: "#454545",
-        borderColor: "#FFFFFF", // Normal selection
+        borderColor: "#FFFFFF",
     },
     cardMatched: {
         backgroundColor: "#81B64C",
@@ -177,7 +205,7 @@ const styles = StyleSheet.create({
     },
     cardError: {
         backgroundColor: "#383633",
-        borderColor: "#D93025", // Only applied if isSelected && isError
+        borderColor: "#D93025",
     },
 
     cardText: { color: "#fff", fontWeight: "500", fontSize: 16, textAlign: "center" },
