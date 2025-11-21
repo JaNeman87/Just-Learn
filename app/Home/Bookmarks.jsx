@@ -1,3 +1,6 @@
+
+
+
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
@@ -6,12 +9,12 @@ import React, { useState } from "react";
 import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// 2. Import the new service
 import { fetchQuestionsByIds } from "../services/contentService";
+// 1. Import DownloadButton
+import DownloadButton from "../../components/DownloadButton";
 
 const BOOKMARKS_KEY = "@JustLearnBookmarks";
 
-// Helper to shuffle practice questions
 const shuffle = array => [...array].sort(() => Math.random() - 0.5);
 
 const Bookmarks = () => {
@@ -29,7 +32,6 @@ const Bookmarks = () => {
     const loadBookmarks = async () => {
         setLoading(true);
         try {
-            // 1. Get IDs from Local Storage
             const statsJson = await AsyncStorage.getItem(BOOKMARKS_KEY);
             const bookmarkIds = statsJson ? JSON.parse(statsJson) : [];
 
@@ -39,7 +41,6 @@ const Bookmarks = () => {
                 return;
             }
 
-            // 2. Fetch only these questions from Supabase
             const questions = await fetchQuestionsByIds(bookmarkIds);
             setBookmarkedQuestions(questions);
         } catch (e) {
@@ -87,6 +88,9 @@ const Bookmarks = () => {
         ]);
     };
 
+    // 2. Prepare IDs for the button
+    const bookmarkIds = bookmarkedQuestions.map(q => q.id);
+
     if (loading) {
         return (
             <SafeAreaView style={styles.loadingContainer}>
@@ -97,6 +101,14 @@ const Bookmarks = () => {
 
     return (
         <SafeAreaView style={styles.container}>
+            {/* 3. HEADER ROW WITH DOWNLOAD BUTTON */}
+            <View style={styles.headerContainer}>
+                <Text style={styles.titleText}>Your Bookmarks</Text>
+                {hasBookmarks && (
+                     <DownloadButton bookmarkIds={bookmarkIds} type="bookmarks" />
+                )}
+            </View>
+
             {bookmarkedQuestions.length === 0 ? (
                 <View style={styles.emptyContainer}>
                     <Ionicons name="bookmark-outline" size={80} color="#555" />
@@ -151,11 +163,26 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
     },
+    // 4. New Header Styles
+    headerContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingBottom: 10,
+        paddingTop: 10,
+    },
+    titleText: {
+        color: "#fff",
+        fontSize: 24,
+        fontWeight: "bold",
+    },
     scrollContainer: {
         flex: 1,
     },
     scrollContent: {
         padding: 20,
+        paddingTop: 0,
     },
     actionsContainer: {
         width: "100%",

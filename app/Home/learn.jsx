@@ -1,13 +1,16 @@
+
+
 // import AsyncStorage from "@react-native-async-storage/async-storage";
 // import { useFocusEffect } from "@react-navigation/native";
 // import { useNavigation } from "expo-router";
 // import { useCallback, useState } from "react";
-// import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native"; // Removed Alert
+// import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
 // import LearnTopicItem from "../../components/LearnTopicItem";
-// import { useMembership } from "../contexts/MembershipContext";
-// import { LANGUAGE_LEVELS as tests } from "../services/mockData";
-// // 1. Import Modal
 // import ProModal from "../../components/ProModal";
+// import { useMembership } from "../contexts/MembershipContext";
+
+// // 1. IMPORT THE NEW SERVICE
+// import { fetchLevelData } from "../services/contentService";
 
 // const LEVEL_KEY = "@JustLearn:selectedLevel";
 
@@ -19,8 +22,6 @@
 //     const [topicsToDisplay, setTopicsToDisplay] = useState([]);
 //     const [currentLevelTitle, setCurrentLevelTitle] = useState("");
 //     const [viewableItems, setViewableItems] = useState(new Set());
-
-//     // 2. Add Modal State
 //     const [modalVisible, setModalVisible] = useState(false);
 
 //     useFocusEffect(
@@ -28,41 +29,41 @@
 //             setTopicsToDisplay([]);
 //             setViewableItems(new Set());
 
-//             const loadSelectedTopics = async () => {
+//             const loadData = async () => {
 //                 setLoading(true);
 //                 try {
-//                     const savedLevel = await AsyncStorage.getItem(LEVEL_KEY);
-//                     const level = savedLevel || "A1";
-//                     const levelData = tests[level];
+//                     const savedLevel = (await AsyncStorage.getItem(LEVEL_KEY)) || "A1";
+
+//                     // 2. FETCH FROM SUPABASE
+//                     const levelData = await fetchLevelData(savedLevel);
 
 //                     if (levelData) {
 //                         setTopicsToDisplay(levelData.tests || []);
-//                         setCurrentLevelTitle(levelData.title || level);
+//                         setCurrentLevelTitle(levelData.title || savedLevel);
 //                     } else {
 //                         setTopicsToDisplay([]);
-//                         setCurrentLevelTitle("No level data found");
+//                         setCurrentLevelTitle("No content found");
 //                     }
 //                 } catch (e) {
-//                     console.error("Failed to load topics for level", e);
+//                     console.error("Failed to load topics", e);
 //                     setTopicsToDisplay([]);
 //                 }
 //                 setLoading(false);
 //             };
 
-//             loadSelectedTopics();
+//             loadData();
 //         }, [])
 //     );
 
-//     // 3. Updated Handler
+//     // ... Rest of component remains the same ...
 //     const goToFlashcards = (testTopic, isLocked) => {
 //         if (isLocked) {
-//             setModalVisible(true); // Show Modal
+//             setModalVisible(true);
 //             return;
 //         }
 //         navigation.navigate(`FlashcardScreen`, { questions: testTopic.questions });
 //     };
 
-//     // 4. Handler for Modal Action
 //     const handleGoProNav = () => {
 //         setModalVisible(false);
 //         navigation.navigate("membership");
@@ -76,7 +77,6 @@
 //     const renderTopicItem = useCallback(
 //         ({ item, index }) => {
 //             const isLocked = !isPro && index > 0;
-
 //             return (
 //                 <LearnTopicItem
 //                     item={item}
@@ -108,16 +108,13 @@
 //                     contentContainerStyle={styles.scrollContent}
 //                     showsVerticalScrollIndicator={false}
 //                     onViewableItemsChanged={onViewableItemsChanged}
-//                     viewabilityConfig={{
-//                         itemVisiblePercentThreshold: 20,
-//                     }}
+//                     viewabilityConfig={{ itemVisiblePercentThreshold: 20 }}
 //                     extraData={isPro}
 //                 />
 //             ) : (
-//                 <Text style={styles.noTopicsText}>No topics found for this level.</Text>
+//                 <Text style={styles.noTopicsText}>No topics found. Check internet connection.</Text>
 //             )}
 
-//             {/* 5. Render Modal */}
 //             <ProModal visible={modalVisible} onClose={() => setModalVisible(false)} onGoPro={handleGoProNav} />
 //         </View>
 //     );
@@ -160,7 +157,8 @@ import LearnTopicItem from "../../components/LearnTopicItem";
 import ProModal from "../../components/ProModal";
 import { useMembership } from "../contexts/MembershipContext";
 
-// 1. IMPORT THE NEW SERVICE
+// 1. Import Service & Download Button
+import DownloadButton from "../../components/DownloadButton";
 import { fetchLevelData } from "../services/contentService";
 
 const LEVEL_KEY = "@JustLearn:selectedLevel";
@@ -175,6 +173,9 @@ const Learn = () => {
     const [viewableItems, setViewableItems] = useState(new Set());
     const [modalVisible, setModalVisible] = useState(false);
 
+    // 2. State for Level ID
+    const [currentLevelId, setCurrentLevelId] = useState(null);
+
     useFocusEffect(
         useCallback(() => {
             setTopicsToDisplay([]);
@@ -183,9 +184,10 @@ const Learn = () => {
             const loadData = async () => {
                 setLoading(true);
                 try {
-                    const savedLevel = (await AsyncStorage.getItem(LEVEL_KEY)) || "A1";
-
-                    // 2. FETCH FROM SUPABASE
+                    const savedLevel = await AsyncStorage.getItem(LEVEL_KEY) || "A1";
+                    setCurrentLevelId(savedLevel); // Store ID for the button
+                    
+                    // Fetch Data (Checks local storage first)
                     const levelData = await fetchLevelData(savedLevel);
 
                     if (levelData) {
@@ -206,7 +208,6 @@ const Learn = () => {
         }, [])
     );
 
-    // ... Rest of component remains the same ...
     const goToFlashcards = (testTopic, isLocked) => {
         if (isLocked) {
             setModalVisible(true);
@@ -228,6 +229,7 @@ const Learn = () => {
     const renderTopicItem = useCallback(
         ({ item, index }) => {
             const isLocked = !isPro && index > 0;
+
             return (
                 <LearnTopicItem
                     item={item}
@@ -250,7 +252,12 @@ const Learn = () => {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.titleText}>{currentLevelTitle}</Text>
+            {/* 3. Header with Download Button */}
+            <View style={styles.headerContainer}>
+                <Text style={styles.titleText}>{currentLevelTitle}</Text>
+                <DownloadButton levelId={currentLevelId} />
+            </View>
+
             {topicsToDisplay.length > 0 ? (
                 <FlatList
                     data={topicsToDisplay}
@@ -259,14 +266,20 @@ const Learn = () => {
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
                     onViewableItemsChanged={onViewableItemsChanged}
-                    viewabilityConfig={{ itemVisiblePercentThreshold: 20 }}
-                    extraData={isPro}
+                    viewabilityConfig={{
+                        itemVisiblePercentThreshold: 20,
+                    }}
+                    extraData={isPro} 
                 />
             ) : (
                 <Text style={styles.noTopicsText}>No topics found. Check internet connection.</Text>
             )}
 
-            <ProModal visible={modalVisible} onClose={() => setModalVisible(false)} onGoPro={handleGoProNav} />
+            <ProModal 
+                visible={modalVisible}
+                onClose={() => setModalVisible(false)}
+                onGoPro={handleGoProNav}
+            />
         </View>
     );
 };
@@ -278,17 +291,24 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: "#2C2B29",
     },
-    scrollContent: {
-        padding: 20,
-        paddingTop: 0,
+    // 4. New Header Style
+    headerContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingTop: 40,
+        paddingBottom: 20,
+        paddingHorizontal: 20,
     },
     titleText: {
         color: "#fff",
         fontSize: 24,
         fontWeight: "bold",
-        marginBottom: 20,
-        paddingHorizontal: 20,
-        paddingTop: 40,
+        flex: 1,
+    },
+    scrollContent: {
+        padding: 20,
+        paddingTop: 0,
     },
     noTopicsText: {
         flex: 1,

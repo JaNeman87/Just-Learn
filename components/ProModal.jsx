@@ -1,14 +1,25 @@
+
+
 import { Ionicons } from "@expo/vector-icons";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Animatable from "react-native-animatable";
 
-const ProModal = ({ visible, onClose, onGoPro }) => {
+const ProModal = ({ visible, onClose, onGoPro, featureTitle, featureDescription }) => {
     if (!visible) return null;
 
     return (
-        <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
+        <Modal 
+            animationType="fade" 
+            transparent={true} 
+            visible={visible} 
+            onRequestClose={onClose}
+        >
             <View style={styles.overlay}>
-                <Animatable.View animation="zoomIn" duration={300} style={styles.modalContainer}>
+                <Animatable.View 
+                    animation="zoomIn" 
+                    duration={300} 
+                    style={styles.modalContainer}
+                >
                     {/* Header Icon */}
                     <View style={styles.iconContainer}>
                         <Animatable.View animation="pulse" iterationCount="infinite" duration={2000}>
@@ -16,11 +27,21 @@ const ProModal = ({ visible, onClose, onGoPro }) => {
                         </Animatable.View>
                     </View>
 
-                    {/* Content */}
-                    <Text style={styles.title}>Unlock Full Access</Text>
+                    {/* Title: Uses prop if provided, else default */}
+                    <Text style={styles.title}>
+                        {featureTitle || "Unlock Full Access"}
+                    </Text>
+                    
+                    {/* Description: Uses prop if provided, else default */}
                     <Text style={styles.description}>
-                        This content is locked. Upgrade to <Text style={styles.proText}>PRO</Text> to unlock all tests,
-                        flashcards, and advanced statistics.
+                        {featureDescription ? (
+                            featureDescription
+                        ) : (
+                            <>
+                                This content is locked. Upgrade to <Text style={styles.proText}>PRO</Text> to unlock all tests,
+                                flashcards, and advanced statistics.
+                            </>
+                        )}
                     </Text>
 
                     {/* Buttons */}
@@ -41,7 +62,7 @@ const ProModal = ({ visible, onClose, onGoPro }) => {
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: "rgba(0, 0, 0, 0.75)", // Dark dimming background
+        backgroundColor: "rgba(0, 0, 0, 0.75)", // Original stable dark dimming
         justifyContent: "center",
         alignItems: "center",
     },
