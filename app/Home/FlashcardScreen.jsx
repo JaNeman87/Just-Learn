@@ -1,14 +1,17 @@
+
+
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { Audio } from 'expo-av';
 import * as Haptics from "expo-haptics";
 import * as Speech from 'expo-speech';
 import { useEffect, useRef, useState } from "react";
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Animatable from "react-native-animatable";
 import { useMembership } from "../contexts/MembershipContext";
+import { transcribeAudio } from "../services/aiService";
 
-// Helper to shuffle array
 const shuffle = array => [...array].sort(() => Math.random() - 0.5);
 const BOOKMARKS_KEY = "@JustLearnBookmarks";
 
@@ -25,25 +28,124 @@ const FlashcardScreen = () => {
     const [isBookmarked, setIsBookmarked] = useState(false);
     const [flipAnim] = useState(new Animated.Value(0));
 
+    // Recording State
+    const [isRecording, setIsRecording] = useState(false);
+    const [processingSpeech, setProcessingSpeech] = useState(false);
+    const [speechResult, setSpeechResult] = useState(null); 
+    
+    const recordingRef = useRef(null);
     const buttonsRef = useRef(null);
 
     const currentCard = studyDeck.length > 0 && currentIndex < studyDeck.length ? studyDeck[currentIndex] : null;
 
-    // Helper to Speak
     const speak = (text, language = 'de') => {
         Speech.stop();
-        Speech.speak(text, {
-            language: language,
-            pitch: 1.0,
-            rate: 0.9, 
-        });
+        Speech.speak(text, { language: language, pitch: 1.0, rate: 0.9 });
     };
 
     useEffect(() => {
-        if (!questions) {
-            navigation.goBack();
+        (async () => {
+            const { status } = await Audio.requestPermissionsAsync();
+            if (status === 'granted') {
+                await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: true,
+                    playsInSilentModeIOS: true,
+                });
+            }
+        })();
+    }, []);
+
+    // --- NEW: TOGGLE RECORDING LOGIC ---
+    const toggleRecording = async () => {
+        if (isRecording) {
+            await stopRecording();
+        } else {
+            await startRecording();
+        }
+    };
+
+    const startRecording = async () => {
+        if (!isPro) {
+            Alert.alert("Pro Feature", "Pronunciation practice is available for Pro members.");
             return;
         }
+        
+        // Reset UI
+        setSpeechResult(null); 
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setIsRecording(true); 
+
+        try {
+            // Cleanup any stuck session
+            if (recordingRef.current) {
+                try { await recordingRef.current.stopAndUnloadAsync(); } catch (e) {}
+                recordingRef.current = null;
+            }
+
+            // Start
+            const { recording } = await Audio.Recording.createAsync(
+                Audio.RecordingOptionsPresets.HIGH_QUALITY
+            );
+            
+            recordingRef.current = recording;
+            
+        } catch (err) {
+            console.error('Failed to start recording', err);
+            setIsRecording(false);
+        }
+    };
+
+    const stopRecording = async () => {
+        setIsRecording(false); 
+        const activeRecording = recordingRef.current;
+        
+        if (!activeRecording) return;
+
+        setProcessingSpeech(true);
+        recordingRef.current = null; 
+
+        try {
+            await activeRecording.stopAndUnloadAsync();
+            const uri = activeRecording.getURI(); 
+            
+            const spokenText = await transcribeAudio(uri);
+            
+            if (spokenText) {
+                const cleanSpoken = spokenText.toLowerCase().replace(/[.,!?]/g, "").trim();
+                
+                let targetText = currentCard.type === 'sentence' 
+                    ? currentCard.correctSentence.join(" ") 
+                    : currentCard.questionText;
+                
+                if (targetText.includes("___")) {
+                     const answer = currentCard.options[currentCard.correctAnswerIndex];
+                     targetText = targetText.replace(/_+/g, answer);
+                }
+
+                const cleanTarget = targetText.toLowerCase().replace(/[.,!?]/g, "").trim();
+                console.log(`Spoken: "${cleanSpoken}" vs Target: "${cleanTarget}"`);
+
+                if (cleanSpoken.includes(cleanTarget) || cleanTarget.includes(cleanSpoken)) {
+                    setSpeechResult('correct');
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                } else {
+                    setSpeechResult('incorrect');
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                    Alert.alert("Try Again", `You said: "${spokenText}"`);
+                }
+            } else {
+                 // Silent fail or small toast is better than alert for silence
+                 console.log("No speech detected");
+            }
+        } catch (error) {
+            console.error("Stop Recording Error:", error);
+        }
+        
+        setProcessingSpeech(false);
+    };
+
+    useEffect(() => {
+        if (!questions) { navigation.goBack(); return; }
         const filtered = questions.filter(q => q.type === "standard" || q.type === "sentence" || !q.type);
         const shuffledDeck = shuffle(filtered);
         setStudyDeck(shuffledDeck);
@@ -64,11 +166,11 @@ const FlashcardScreen = () => {
                 const bookmarksJson = await AsyncStorage.getItem(BOOKMARKS_KEY);
                 const bookmarks = bookmarksJson ? JSON.parse(bookmarksJson) : [];
                 setIsBookmarked(bookmarks.includes(currentCard.id));
-            } catch (e) {
-                console.error("Failed to load bookmarks", e);
-            }
+            } catch (e) {}
         };
         loadBookmarkStatus();
+        setSpeechResult(null);
+        setIsRecording(false); // Ensure recording resets on card change
     }, [currentCard]);
 
     const handleBookmarkToggle = async () => {
@@ -80,60 +182,35 @@ const FlashcardScreen = () => {
             const bookmarksJson = await AsyncStorage.getItem(BOOKMARKS_KEY);
             let bookmarks = bookmarksJson ? JSON.parse(bookmarksJson) : [];
             if (newBookmarkState) {
-                if (!bookmarks.includes(currentCard.id)) {
-                    bookmarks.push(currentCard.id);
-                }
+                if (!bookmarks.includes(currentCard.id)) bookmarks.push(currentCard.id);
             } else {
                 bookmarks = bookmarks.filter(id => id !== currentCard.id);
             }
             await AsyncStorage.setItem(BOOKMARKS_KEY, JSON.stringify(bookmarks));
-        } catch (e) {
-            console.error("Failed to save bookmarks", e);
-            setIsBookmarked(!newBookmarkState);
-        }
+        } catch (e) { setIsBookmarked(!newBookmarkState); }
     };
 
     const flipCard = () => {
         if (isFlipped) {
-            // Flip Back to Front
-            Animated.spring(flipAnim, {
-                toValue: 0,
-                friction: 8,
-                tension: 10,
-                useNativeDriver: true,
-            }).start();
+            Animated.spring(flipAnim, { toValue: 0, friction: 8, tension: 10, useNativeDriver: true }).start();
         } else {
-            // Flip Front to Back
-            Animated.spring(flipAnim, {
-                toValue: 180,
-                friction: 8,
-                tension: 10,
-                useNativeDriver: true,
-            }).start();
-            
-            // --- AUTO-SPEAK REMOVED (As requested) ---
-            // It will only speak when you press the button now.
+            Animated.spring(flipAnim, { toValue: 180, friction: 8, tension: 10, useNativeDriver: true }).start();
         }
         setIsFlipped(!isFlipped);
+        setSpeechResult(null);
+        setIsRecording(false); // Stop recording if they flip the card
     };
 
-    // --- NEW: Smart Speak Handler ---
     const handleSpeakBack = (e) => {
-        e.stopPropagation(); 
-        
+        e.stopPropagation();
         if (currentCard.type === 'sentence') {
-            const germanSentence = currentCard.correctSentence.join(" ");
-            speak(germanSentence);
+            speak(currentCard.correctSentence.join(" "));
         } else {
-            // Standard Card
-            const correctAnswer = currentCard.options[currentCard.correctAnswerIndex];
             let textToSpeak = currentCard.questionText;
-
-            // FIX: Replace underscores with the actual answer so it speaks a full sentence
+            const correctAnswer = currentCard.options[currentCard.correctAnswerIndex];
             if (textToSpeak.includes("___")) {
                 textToSpeak = textToSpeak.replace(/_+/g, correctAnswer);
             }
-            
             speak(textToSpeak);
         }
     };
@@ -146,10 +223,7 @@ const FlashcardScreen = () => {
             buttonsRef.current.fadeOutDown(200).then(() => {
                 setIsFlipped(false);
                 flipAnim.setValue(0);
-                
-                if (!knewIt) {
-                    setStudyDeck(prev => [...prev, currentCard]);
-                }
+                if (!knewIt) setStudyDeck(prev => [...prev, currentCard]);
                 setCurrentIndex(prev => prev + 1);
             });
         } else {
@@ -160,30 +234,16 @@ const FlashcardScreen = () => {
         }
     };
 
-    const frontInterpolate = flipAnim.interpolate({
-        inputRange: [0, 180],
-        outputRange: ["0deg", "180deg"],
-    });
-    const backInterpolate = flipAnim.interpolate({
-        inputRange: [0, 180],
-        outputRange: ["180deg", "360deg"],
-    });
-    const frontOpacity = flipAnim.interpolate({
-        inputRange: [89, 90],
-        outputRange: [1, 0],
-    });
-    const backOpacity = flipAnim.interpolate({
-        inputRange: [89, 90],
-        outputRange: [0, 1],
-    });
+    const frontInterpolate = flipAnim.interpolate({ inputRange: [0, 180], outputRange: ["0deg", "180deg"] });
+    const backInterpolate = flipAnim.interpolate({ inputRange: [0, 180], outputRange: ["180deg", "360deg"] });
+    const frontOpacity = flipAnim.interpolate({ inputRange: [89, 90], outputRange: [1, 0] });
+    const backOpacity = flipAnim.interpolate({ inputRange: [89, 90], outputRange: [0, 1] });
 
     if (!currentCard || currentIndex >= studyDeck.length) {
         return (
             <View style={styles.container}>
                 <View style={styles.completeContainer}>
-                    <Animatable.Text animation="pulse" iterationCount="infinite" style={styles.completeIcon}>
-                        🎉
-                    </Animatable.Text>
+                    <Animatable.Text animation="pulse" iterationCount="infinite" style={styles.completeIcon}>🎉</Animatable.Text>
                     <Text style={styles.completeTitle}>Session Complete!</Text>
                     <Text style={styles.completeSubtitle}>You've reviewed all the cards in this topic.</Text>
                     <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -197,59 +257,36 @@ const FlashcardScreen = () => {
     let correctAnswerText = "";
     let questionText = currentCard.questionText || "";
     const isFillInTheBlank = questionText.includes("___");
-
-    if (currentCard.type === "sentence") {
-        correctAnswerText = currentCard.correctSentence.join(" ");
-    } else if (currentCard.type === "standard" || !currentCard.type) {
-        correctAnswerText = currentCard.options[currentCard.correctAnswerIndex];
-    }
-
+    if (currentCard.type === "sentence") correctAnswerText = currentCard.correctSentence.join(" ");
+    else if (currentCard.type === "standard" || !currentCard.type) correctAnswerText = currentCard.options[currentCard.correctAnswerIndex];
     let questionPart1, questionPart2;
     if (isFillInTheBlank) {
         const questionParts = currentCard.questionText.split("___");
         questionPart1 = questionParts[0];
         questionPart2 = questionParts[1] || "";
     }
-
     const totalCards = studyDeck.length;
     const currentCardNumber = currentIndex + 1;
     const progressPercent = (currentCardNumber / totalCards) * 100;
 
     return (
         <View style={styles.container}>
-            <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent}
-            >
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
                 <View style={styles.bookmarkContainer}>
                     <TouchableOpacity onPress={handleBookmarkToggle} style={styles.bookmarkButton}>
-                        <Ionicons
-                            name={isBookmarked ? "bookmark" : "bookmark-outline"}
-                            size={28}
-                            color={isBookmarked ? "#81B64C" : "#FFFFFF"}
-                        />
+                        <Ionicons name={isBookmarked ? "bookmark" : "bookmark-outline"} size={28} color={isBookmarked ? "#81B64C" : "#FFFFFF"} />
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.progressContainer}>
-                    <Text style={styles.progressText}>
-                        Card {currentCardNumber} / {totalCards}
-                    </Text>
-                    <View style={styles.progressBarTrack}>
-                        <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
-                    </View>
+                    <Text style={styles.progressText}>Card {currentCardNumber} / {totalCards}</Text>
+                    <View style={styles.progressBarTrack}><View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} /></View>
                 </View>
 
                 <View style={{ width: "100%", minHeight: 400 }}>
                     <TouchableOpacity activeOpacity={1} onPress={flipCard} style={styles.touchableArea}>
-                        {/* --- FRONT SIDE --- */}
-                        <Animated.View
-                            style={[
-                                styles.card,
-                                styles.cardFront,
-                                { transform: [{ rotateY: frontInterpolate }], opacity: frontOpacity },
-                            ]}
-                        >
+                        {/* --- FRONT --- */}
+                        <Animated.View style={[styles.card, styles.cardFront, { transform: [{ rotateY: frontInterpolate }], opacity: frontOpacity }]}>
                             {currentCard.type === "sentence" ? (
                                 <View style={styles.questionContainer}>
                                     <Text style={styles.questionText}>(Translate this sentence)</Text>
@@ -257,16 +294,10 @@ const FlashcardScreen = () => {
                                 </View>
                             ) : (
                                 <>
-                                    <View style={styles.questionContainer}>
-                                        <Text style={styles.questionText}>{currentCard.questionText}</Text>
-                                    </View>
-                                    {/* Front Speaker REMOVED */}
-
+                                    <View style={styles.questionContainer}><Text style={styles.questionText}>{currentCard.questionText}</Text></View>
                                     <View style={styles.optionsContainer}>
                                         {currentCard.options && currentCard.options.map((option, index) => (
-                                            <View key={index} style={styles.optionButton}>
-                                                <Text style={styles.optionText}>{option}</Text>
-                                            </View>
+                                            <View key={index} style={styles.optionButton}><Text style={styles.optionText}>{option}</Text></View>
                                         ))}
                                     </View>
                                 </>
@@ -274,61 +305,55 @@ const FlashcardScreen = () => {
                             <Text style={styles.cardHint}>(Tap to flip)</Text>
                         </Animated.View>
 
-                        {/* --- BACK SIDE --- */}
-                        <Animated.View
-                            style={[
-                                styles.card,
-                                styles.cardBack,
-                                { transform: [{ rotateY: backInterpolate }], opacity: backOpacity },
-                            ]}
-                        >
-                            {currentCard.type === "sentence" ? (
-                                <View style={styles.questionContainer}>
+                        {/* --- BACK --- */}
+                        <Animated.View style={[styles.card, styles.cardBack, { transform: [{ rotateY: backInterpolate }], opacity: backOpacity }]}>
+                            <View style={styles.questionContainer}>
+                                {currentCard.type === "sentence" ? (
                                     <Text style={styles.cardTextBack}>{correctAnswerText}</Text>
-                                    {/* Speaker for Sentence Back */}
-                                    <TouchableOpacity 
-                                        style={styles.speakerButton} 
-                                        onPress={handleSpeakBack}
-                                    >
-                                        <Ionicons name="volume-high" size={24} color="#81B64C" />
-                                    </TouchableOpacity>
-                                </View>
-                            ) : (
-                                <>
-                                    <View style={styles.questionContainer}>
-                                        {isFillInTheBlank ? (
-                                            <Text style={styles.questionText}>
-                                                {questionPart1}
-                                                <Text style={styles.filledCorrectText}>{correctAnswerText}</Text>
-                                                {questionPart2}
-                                            </Text>
-                                        ) : (
-                                            <Text style={styles.questionText}>{currentCard.questionText}</Text>
-                                        )}
-                                    </View>
-                                    {/* Speaker for Standard Back with Smart Replacement */}
-                                    <TouchableOpacity 
-                                        style={styles.speakerButton} 
-                                        onPress={handleSpeakBack}
-                                    >
-                                        <Ionicons name="volume-high" size={24} color="#81B64C" />
-                                    </TouchableOpacity>
+                                ) : isFillInTheBlank ? (
+                                    <Text style={styles.questionText}>{questionPart1}<Text style={styles.filledCorrectText}>{correctAnswerText}</Text>{questionPart2}</Text>
+                                ) : (
+                                    <Text style={styles.questionText}>{currentCard.questionText}</Text>
+                                )}
+                            </View>
 
-                                    <View style={styles.optionsContainer}>
-                                        {currentCard.options && currentCard.options.map((option, index) => (
-                                            <View
-                                                key={index}
-                                                style={
-                                                    index === currentCard.correctAnswerIndex
-                                                        ? styles.correctOption
-                                                        : styles.disabledOption
-                                                }
-                                            >
-                                                <Text style={styles.optionText}>{option}</Text>
-                                            </View>
-                                        ))}
-                                    </View>
-                                </>
+                            {/* --- AUDIO CONTROLS --- */}
+                            <View style={styles.audioRow}>
+                                <TouchableOpacity style={styles.speakerButton} onPress={handleSpeakBack}>
+                                    <Ionicons name="volume-high" size={24} color="#81B64C" />
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[
+                                        styles.micButton, 
+                                        isRecording && styles.micButtonActive,
+                                        speechResult === 'correct' && styles.micButtonCorrect,
+                                        speechResult === 'incorrect' && styles.micButtonIncorrect
+                                    ]}
+                                    // 2. Changed to standard onPress for Toggle behavior
+                                    onPress={toggleRecording}
+                                    activeOpacity={0.7}
+                                >
+                                    {processingSpeech ? (
+                                        <ActivityIndicator size="small" color="#FFF" />
+                                    ) : (
+                                        <Ionicons 
+                                            name={speechResult === 'correct' ? "checkmark" : speechResult === 'incorrect' ? "close" : isRecording ? "stop" : "mic"} 
+                                            size={28} 
+                                            color="#FFF" 
+                                        />
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+
+                            {currentCard.type !== "sentence" && (
+                                <View style={styles.optionsContainer}>
+                                    {currentCard.options && currentCard.options.map((option, index) => (
+                                        <View key={index} style={index === currentCard.correctAnswerIndex ? styles.correctOption : styles.disabledOption}>
+                                            <Text style={styles.optionText}>{option}</Text>
+                                        </View>
+                                    ))}
+                                </View>
                             )}
                             <Text style={styles.cardHint}>(Tap to flip)</Text>
                         </Animated.View>
@@ -338,19 +363,11 @@ const FlashcardScreen = () => {
 
             {isFlipped && (
                 <Animatable.View ref={buttonsRef} animation="fadeInUp" duration={300} style={styles.buttonContainer}>
-                    <TouchableOpacity
-                        style={[styles.actionButton, styles.unknownButton]}
-                        onPress={() => handleAnswer(false)}
-                        disabled={isAnimating}
-                    >
+                    <TouchableOpacity style={[styles.actionButton, styles.unknownButton]} onPress={() => handleAnswer(false)} disabled={isAnimating}>
                         <Ionicons name="close" size={32} color="white" />
                         <Text style={styles.buttonText}>I didn't know</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.actionButton, styles.knownButton]}
-                        onPress={() => handleAnswer(true)}
-                        disabled={isAnimating}
-                    >
+                    <TouchableOpacity style={[styles.actionButton, styles.knownButton]} onPress={() => handleAnswer(true)} disabled={isAnimating}>
                         <Ionicons name="checkmark" size={32} color="white" />
                         <Text style={styles.buttonText}>I knew it</Text>
                     </TouchableOpacity>
@@ -361,216 +378,70 @@ const FlashcardScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: "#2C2B29",
-        justifyContent: "space-between",
-        paddingTop: 60,
-    },
-    scrollContent: {
-        paddingHorizontal: 20,
-        paddingBottom: 20,
-    },
-    bookmarkContainer: {
-        width: "100%",
-        alignItems: "flex-end",
-        marginBottom: 10,
-    },
-    bookmarkButton: {
-        padding: 5,
-    },
-    progressContainer: {
-        width: "100%",
+    container: { flex: 1, backgroundColor: "#2C2B29", justifyContent: "space-between", paddingTop: 60 },
+    scrollContent: { paddingHorizontal: 20, paddingBottom: 20 },
+    bookmarkContainer: { width: "100%", alignItems: "flex-end", marginBottom: 10 },
+    bookmarkButton: { padding: 5 },
+    progressContainer: { width: "100%", marginBottom: 20 },
+    progressText: { color: "#AAAAAA", fontSize: 14, fontWeight: "bold", textAlign: "center", marginBottom: 5 },
+    progressBarTrack: { height: 10, width: "100%", backgroundColor: "#383633", borderRadius: 5 },
+    progressBarFill: { height: "100%", backgroundColor: "#81B64C", borderRadius: 5 },
+    touchableArea: { width: '100%', minHeight: 400 },
+    card: { width: "100%", minHeight: 400, backgroundColor: "#383633", borderRadius: 20, justifyContent: "flex-start", alignItems: "center", backfaceVisibility: "hidden", padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 },
+    cardFront: { position: 'absolute', top: 0 },
+    cardBack: { position: 'absolute', top: 0 },
+    cardHint: { color: "#AAAAAA", fontSize: 14, fontStyle: "italic", marginTop: 20 },
+    questionContainer: { width: "100%", paddingVertical: 20, paddingHorizontal: 15, marginTop: 20, backgroundColor: "transparent", borderRadius: 10, alignItems: "center" },
+    questionText: { fontSize: 22, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" },
+    englishSentence: { color: "#FFFFFF", fontSize: 22, fontWeight: "bold", textAlign: "center", marginTop: 10 },
+    filledCorrectText: { color: "#81B64C", fontWeight: "bold", textDecorationLine: "underline" },
+    optionsContainer: { width: "100%", marginTop: 10 },
+    optionButton: { backgroundColor: "transparent", padding: 15, borderRadius: 8, width: "100%", marginBottom: 10, borderWidth: 1, borderColor: "#555" },
+    correctOption: { backgroundColor: "#81B64C", padding: 15, borderRadius: 8, width: "100%", marginBottom: 10, borderWidth: 1, borderColor: "#81B64C" },
+    disabledOption: { backgroundColor: "transparent", padding: 15, borderRadius: 8, width: "100%", marginBottom: 10, borderWidth: 1, borderColor: "#555", opacity: 0.5 },
+    optionText: { color: "#FFFFFF", fontSize: 18, fontWeight: "500", textAlign: "center" },
+    cardTextBack: { color: "#81B64C", fontSize: 26, fontWeight: "bold", textAlign: "center", padding: 10 },
+    buttonContainer: { flexDirection: "row", justifyContent: "space-around", width: "100%", paddingHorizontal: 20, paddingBottom: 40 },
+    actionButton: { flexDirection: "row", alignItems: "center", paddingVertical: 15, paddingHorizontal: 25, borderRadius: 15 },
+    knownButton: { backgroundColor: "#81B64C" },
+    unknownButton: { backgroundColor: "#D93025" },
+    buttonText: { color: "white", fontSize: 16, fontWeight: "bold", marginLeft: 10 },
+    completeContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+    completeIcon: { fontSize: 100 },
+    completeTitle: { fontSize: 32, fontWeight: "bold", color: "#81B64C", marginTop: 20 },
+    completeSubtitle: { fontSize: 18, color: "#AAAAAA", marginTop: 10, textAlign: "center", paddingHorizontal: 20 },
+    backButton: { backgroundColor: "#383633", paddingVertical: 15, paddingHorizontal: 40, borderRadius: 10, marginTop: 40 },
+    backButtonText: { color: "white", fontSize: 18, fontWeight: "bold" },
+
+    // --- NEW STYLES ---
+    audioRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 20,
         marginBottom: 20,
     },
-    progressText: {
-        color: "#AAAAAA",
-        fontSize: 14,
-        fontWeight: "bold",
-        textAlign: "center",
-        marginBottom: 5,
-    },
-    progressBarTrack: {
-        height: 10,
-        width: "100%",
-        backgroundColor: "#383633",
-        borderRadius: 5,
-    },
-    progressBarFill: {
-        height: "100%",
-        backgroundColor: "#81B64C",
-        borderRadius: 5,
-    },
-    touchableArea: {
-        width: '100%',
-        minHeight: 400,
-    },
-    card: {
-        width: "100%",
-        minHeight: 400,
-        backgroundColor: "#383633",
-        borderRadius: 20,
-        justifyContent: "flex-start",
-        alignItems: "center",
-        backfaceVisibility: "hidden",
-        padding: 20,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
-    },
-    cardFront: {
-        position: 'absolute',
-        top: 0,
-    },
-    cardBack: {
-        position: 'absolute',
-        top: 0,
-    },
-    cardHint: {
-        color: "#AAAAAA",
-        fontSize: 14,
-        fontStyle: "italic",
-        marginTop: 20,
-    },
     speakerButton: {
-        marginVertical: 15,
-        padding: 12,
+        padding: 15,
         backgroundColor: 'rgba(255,255,255,0.05)',
         borderRadius: 50,
     },
-    questionContainer: {
-        width: "100%",
-        paddingVertical: 20,
-        paddingHorizontal: 15,
-        marginTop: 20,
-        backgroundColor: "transparent",
-        borderRadius: 10,
-        alignItems: "center",
-    },
-    questionText: {
-        fontSize: 22,
-        fontWeight: "bold",
-        color: "#FFFFFF",
-        textAlign: "center",
-    },
-    englishSentence: {
-        color: "#FFFFFF",
-        fontSize: 22,
-        fontWeight: "bold",
-        textAlign: "center",
-        marginTop: 10,
-    },
-    filledCorrectText: {
-        color: "#81B64C",
-        fontWeight: "bold",
-        textDecorationLine: "underline",
-    },
-    optionsContainer: {
-        width: "100%",
-        marginTop: 10,
-    },
-    optionButton: {
-        backgroundColor: "transparent",
+    micButton: {
         padding: 15,
-        borderRadius: 8,
-        width: "100%",
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: "#555",
+        backgroundColor: '#7B61FF', // Purple for AI
+        borderRadius: 50,
+        shadowColor: "#7B61FF",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 5,
+        elevation: 6,
     },
-    correctOption: {
-        backgroundColor: "#81B64C",
-        padding: 15,
-        borderRadius: 8,
-        width: "100%",
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: "#81B64C",
+    micButtonActive: {
+        backgroundColor: '#D93025', // Red when recording
+        transform: [{ scale: 1.1 }]
     },
-    disabledOption: {
-        backgroundColor: "transparent",
-        padding: 15,
-        borderRadius: 8,
-        width: "100%",
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: "#555",
-        opacity: 0.5,
-    },
-    optionText: {
-        color: "#FFFFFF",
-        fontSize: 18,
-        fontWeight: "500",
-        textAlign: "center",
-    },
-    cardTextBack: {
-        color: "#81B64C",
-        fontSize: 26,
-        fontWeight: "bold",
-        textAlign: "center",
-        padding: 10,
-    },
-    buttonContainer: {
-        flexDirection: "row",
-        justifyContent: "space-around",
-        width: "100%",
-        paddingHorizontal: 20,
-        paddingBottom: 40,
-    },
-    actionButton: {
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: 15,
-        paddingHorizontal: 25,
-        borderRadius: 15,
-    },
-    knownButton: {
-        backgroundColor: "#81B64C",
-    },
-    unknownButton: {
-        backgroundColor: "#D93025",
-    },
-    buttonText: {
-        color: "white",
-        fontSize: 16,
-        fontWeight: "bold",
-        marginLeft: 10,
-    },
-    completeContainer: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    completeIcon: {
-        fontSize: 100,
-    },
-    completeTitle: {
-        fontSize: 32,
-        fontWeight: "bold",
-        color: "#81B64C",
-        marginTop: 20,
-    },
-    completeSubtitle: {
-        fontSize: 18,
-        color: "#AAAAAA",
-        marginTop: 10,
-        textAlign: "center",
-        paddingHorizontal: 20,
-    },
-    backButton: {
-        backgroundColor: "#383633",
-        paddingVertical: 15,
-        paddingHorizontal: 40,
-        borderRadius: 10,
-        marginTop: 40,
-    },
-    backButtonText: {
-        color: "white",
-        fontSize: 18,
-        fontWeight: "bold",
-    },
+    micButtonCorrect: { backgroundColor: '#81B64C' },
+    micButtonIncorrect: { backgroundColor: '#D93025' }
 });
 
 export default FlashcardScreen;

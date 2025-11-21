@@ -1,15 +1,17 @@
 
 
 import { Ionicons } from "@expo/vector-icons";
+import { Audio } from 'expo-av';
+import * as Haptics from "expo-haptics";
 import * as Speech from 'expo-speech';
 import { MotiView } from "moti";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, Vibration, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, Vibration, View } from "react-native";
 import * as Animatable from "react-native-animatable";
 import { Layout } from "react-native-reanimated";
 
 import { useMembership } from "../app/contexts/MembershipContext";
-import { getGrammarExplanation } from "../app/services/aiService";
+import { getGrammarExplanation, transcribeAudio } from "../app/services/aiService";
 import ProModal from "./ProModal";
 import StatusModal from "./StatusModal";
 
@@ -25,10 +27,20 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
     
     const [isSentenceComplete, setIsSentenceComplete] = useState(false);
 
+    // AI Coach State
     const [showCoachButton, setShowCoachButton] = useState(false);
     const [lastErrorContext, setLastErrorContext] = useState(null);
     const [coachLoading, setCoachLoading] = useState(false);
 
+    // Recording State
+    const [isRecording, setIsRecording] = useState(false);
+    const [processingSpeech, setProcessingSpeech] = useState(false);
+    const [speechResult, setSpeechResult] = useState(null);
+    
+    const recordingRef = useRef(null);
+    const isRecordingDesired = useRef(false);
+
+    // Modals
     const [proModalVisible, setProModalVisible] = useState(false);
     const [statusModalVisible, setStatusModalVisible] = useState(false);
     const [statusConfig, setStatusConfig] = useState({});
@@ -36,6 +48,20 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
     const wordRefs = useRef({});
     const wordMap = useRef(new Map());
 
+    // --- PERMISSIONS ---
+    useEffect(() => {
+        (async () => {
+            const { status } = await Audio.requestPermissionsAsync();
+            if (status === 'granted') {
+                await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: true,
+                    playsInSilentModeIOS: true,
+                });
+            }
+        })();
+    }, []);
+
+    // --- INITIALIZATION ---
     useEffect(() => {
         const initialWordObjects = question.options.map((word, index) => ({
             id: `${word}-${index}`,
@@ -55,8 +81,10 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
         setWrongWordId(null);
         setShowCoachButton(false);
         setIsSentenceComplete(false);
+        setSpeechResult(null);
     }, [question]);
 
+    // --- WORD LOGIC ---
     const handleWordPress = wordId => {
         const wordObj = wordMap.current.get(wordId);
         const nextWordIndex = Object.keys(placedWords).length;
@@ -93,12 +121,100 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
         }
     };
 
+    // --- AUDIO / SPEECH LOGIC ---
     const handleSpeakSentence = () => {
         const fullSentence = question.correctSentence.join(" ");
         Speech.stop();
         Speech.speak(fullSentence, { language: 'de', rate: 0.9 });
     };
 
+    const toggleRecording = async () => {
+        if (isRecording) {
+            await stopRecording();
+        } else {
+            await startRecording();
+        }
+    };
+
+    const startRecording = async () => {
+        if (!isPro) {
+            setProModalVisible(true); // Use ProModal instead of Alert
+            return;
+        }
+        
+        isRecordingDesired.current = true;
+        setIsRecording(true); 
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setSpeechResult(null); 
+
+        try {
+            if (recordingRef.current) {
+                try { await recordingRef.current.stopAndUnloadAsync(); } catch (e) {}
+                recordingRef.current = null;
+            }
+
+            const { recording } = await Audio.Recording.createAsync(
+                Audio.RecordingOptionsPresets.HIGH_QUALITY
+            );
+            
+            if (!isRecordingDesired.current) {
+                try { await recording.stopAndUnloadAsync(); } catch (e) {}
+                setIsRecording(false);
+                return;
+            }
+
+            recordingRef.current = recording;
+        } catch (err) {
+            console.error('Failed to start recording', err);
+            setIsRecording(false);
+        }
+    };
+
+    const stopRecording = async () => {
+        isRecordingDesired.current = false;
+        setIsRecording(false); 
+
+        const activeRecording = recordingRef.current;
+        if (!activeRecording) return;
+
+        setProcessingSpeech(true);
+        recordingRef.current = null; 
+
+        try {
+            await activeRecording.stopAndUnloadAsync();
+            const uri = activeRecording.getURI(); 
+            
+            // 1. Transcribe
+            const spokenText = await transcribeAudio(uri);
+            
+            // 2. Compare
+            if (spokenText) {
+                const cleanSpoken = spokenText.toLowerCase().replace(/[.,!?]/g, "").trim();
+                const cleanTarget = question.correctSentence.join(" ").toLowerCase().replace(/[.,!?]/g, "").trim();
+
+                console.log(`Spoken: "${cleanSpoken}" vs Target: "${cleanTarget}"`);
+
+                if (cleanSpoken.includes(cleanTarget) || cleanTarget.includes(cleanSpoken)) {
+                    setSpeechResult('correct');
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                } else {
+                    setSpeechResult('incorrect');
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                    Alert.alert("Try Again", `You said: "${spokenText}"`);
+                }
+            }
+        } catch (error) {
+             if (error.message && error.message.includes("no valid audio data")) {
+                console.log("Recording too short.");
+            } else {
+                console.error("Stop Recording Error:", error);
+            }
+        }
+        
+        setProcessingSpeech(false);
+    };
+
+    // --- AI COACH LOGIC ---
     const handleCoachPress = async () => {
         if (!isPro) {
             setProModalVisible(true);
@@ -128,10 +244,12 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
         setAvailableWordIds(shuffle(initialWords).map(w => w.id));
         setShowCoachButton(false);
         setIsSentenceComplete(false);
+        setSpeechResult(null);
     };
 
     return (
         <View style={styles.container}>
+            {/* AI Coach Button */}
             {showCoachButton && (
                 <Animatable.View animation="bounceIn" style={styles.coachContainer}>
                     <TouchableOpacity 
@@ -154,6 +272,7 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
             <Text style={styles.instruction}>{question.questionText}</Text>
             <Text style={styles.englishSentence}>"{question.englishText}"</Text>
 
+            {/* Sentence Area */}
             <TouchableOpacity onPress={resetSentence} style={styles.sentenceArea} activeOpacity={1}>
                 {question.correctSentence.map((word, index) => {
                     const placedWord = placedWords[index];
@@ -180,6 +299,7 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
                 })}
             </TouchableOpacity>
 
+            {/* Word Pool */}
             <View style={styles.poolArea}>
                 {initialWords.map(word => {
                     if (!availableWordIds.includes(word.id)) {
@@ -206,21 +326,45 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
                 })}
             </View>
 
-            {/* --- 5. MOVED AUDIO BUTTON HERE (Below clickable words) --- */}
+            {/* --- AUDIO CONTROLS (Below Word Pool) --- */}
             {isSentenceComplete && (
-                <Animatable.View animation="fadeInUp" style={styles.audioButtonContainer}>
-                    <TouchableOpacity onPress={handleSpeakSentence} style={styles.speakerButton}>
+                <Animatable.View animation="fadeInUp" style={styles.audioRow}>
+                    {/* TTS Button */}
+                    <TouchableOpacity style={styles.speakerButton} onPress={handleSpeakSentence}>
                         <Ionicons name="volume-high" size={24} color="#81B64C" />
+                    </TouchableOpacity>
+
+                    {/* Mic Button */}
+                    <TouchableOpacity
+                        style={[
+                            styles.micButton, 
+                            isRecording && styles.micButtonActive,
+                            speechResult === 'correct' && styles.micButtonCorrect,
+                            speechResult === 'incorrect' && styles.micButtonIncorrect
+                        ]}
+                        onPress={toggleRecording}
+                        activeOpacity={0.7}
+                    >
+                        {processingSpeech ? (
+                            <ActivityIndicator size="small" color="#FFF" />
+                        ) : (
+                            <Ionicons 
+                                name={speechResult === 'correct' ? "checkmark" : speechResult === 'incorrect' ? "close" : isRecording ? "stop" : "mic"} 
+                                size={28} 
+                                color="#FFF" 
+                            />
+                        )}
                     </TouchableOpacity>
                 </Animatable.View>
             )}
 
+            {/* Modals */}
             <ProModal 
                 visible={proModalVisible} 
                 onClose={() => setProModalVisible(false)} 
                 onGoPro={() => setProModalVisible(false)} 
-                featureTitle="AI Grammar Coach"
-                featureDescription="Get instant explanations for your mistakes. Understand the 'Why' behind the grammar."
+                featureTitle="AI Features"
+                featureDescription="Unlock AI Grammar Coach and Pronunciation Practice with Pro."
             />
             
             <StatusModal 
@@ -253,18 +397,6 @@ const styles = StyleSheet.create({
         elevation: 5,
     },
     coachText: { color: "#FFF", fontWeight: "bold", fontSize: 14 },
-
-    // Updated Audio Styles to match Flashcard
-    audioButtonContainer: {
-        marginTop: 30,
-        marginBottom: 10,
-        alignItems: 'center',
-    },
-    speakerButton: {
-        padding: 15,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 50,
-    },
 
     instruction: { color: "#fff", fontSize: 16, marginBottom: 5, opacity: 0.8 },
     englishSentence: { color: "#fff", fontSize: 24, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
@@ -329,6 +461,37 @@ const styles = StyleSheet.create({
         lineHeight: 24, 
         paddingHorizontal: 2 
     },
+
+    // --- AUDIO STYLES (Shared with Flashcard) ---
+    audioRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 20,
+        marginTop: 30, // Moved down
+        marginBottom: 10,
+    },
+    speakerButton: {
+        padding: 15,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 50,
+    },
+    micButton: {
+        padding: 15,
+        backgroundColor: '#7B61FF', // Purple for AI
+        borderRadius: 50,
+        shadowColor: "#7B61FF",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 5,
+        elevation: 6,
+    },
+    micButtonActive: {
+        backgroundColor: '#D93025', // Red
+        transform: [{ scale: 1.1 }]
+    },
+    micButtonCorrect: { backgroundColor: '#81B64C' },
+    micButtonIncorrect: { backgroundColor: '#D93025' }
 });
 
 export default SentenceBuilder;
