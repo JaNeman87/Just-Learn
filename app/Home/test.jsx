@@ -19,7 +19,10 @@ import {
 } from "react-native";
 import * as Animatable from "react-native-animatable";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+// Components
 import MatchingQuestion from "../../components/MatchingQuestion";
+import MultipleChoiceQuestion from "../../components/MultipleChoiceQuestion"; // NEW IMPORT
 import SentenceBuilder from "../../components/SentenceBuilder";
 
 import DownloadButton from "../../components/DownloadButton";
@@ -341,7 +344,6 @@ const Test = () => {
         }
     };
 
-    // --- UPDATED HEADER: Only Download Button ---
     useLayoutEffect(() => {
         navigation.setOptions({
             headerRight: () => (
@@ -488,25 +490,6 @@ const Test = () => {
         );
     }
 
-    const correctAnswerText = currentQuestion.options && currentQuestion.options[currentQuestion.correctAnswerIndex];
-    const isFillInTheBlank = currentQuestion.questionText && currentQuestion.questionText.includes("___");
-    let questionPart1, questionPart2;
-    if (isFillInTheBlank) {
-        const questionParts = currentQuestion.questionText.split("___");
-        questionPart1 = questionParts[0];
-        questionPart2 = questionParts[1] || "";
-    }
-
-    const getOptionStyle = index => {
-        if (!showResult) {
-            if (index === selectedAnswerIndex) return styles.selectedOption;
-            return styles.optionButton;
-        }
-        if (index === currentQuestion.correctAnswerIndex) return styles.correctOption;
-        if (index === selectedAnswerIndex && !isCorrect) return styles.incorrectOption;
-        return styles.disabledOption;
-    };
-
     const totalQuestions = parsedTest.questions.length;
     const currentQuestionNumber = currentQuestionIndex + 1;
     const progressPercent = (currentQuestionNumber / totalQuestions) * 100;
@@ -553,7 +536,6 @@ const Test = () => {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                {/* --- 1. BOOKMARK ICON IN SCROLLVIEW --- */}
                 <View style={styles.bookmarkContainer}>
                     <TouchableOpacity onPress={handleBookmarkToggle} style={styles.bookmarkButton}>
                         <Ionicons
@@ -571,7 +553,7 @@ const Test = () => {
                     </View>
                 </View>
                 
-                {/* AI COACH BUTTON (Above Question) */}
+                {/* AI COACH BUTTON */}
                 {showResult && !isCorrect && aiContext && (
                     <Animatable.View animation="bounceIn" style={styles.coachContainer}>
                         <TouchableOpacity 
@@ -591,6 +573,7 @@ const Test = () => {
                     </Animatable.View>
                 )}
 
+                {/* --- QUESTION RENDERING LOGIC --- */}
                 {currentQuestion.type === "matching" ? (
                     <MatchingQuestion 
                         question={currentQuestion} 
@@ -604,66 +587,20 @@ const Test = () => {
                         onMistake={handleInteractiveMistake} 
                     />
                 ) : (
-                    <>
-                        <View style={styles.questionContainer}>
-                            {!showResult ? (
-                                <Text style={styles.questionText}>{currentQuestion.questionText}</Text>
-                            ) : isFillInTheBlank ? (
-                                <Text style={styles.questionText}>
-                                    {questionPart1}
-                                    <Text style={isCorrect ? styles.filledCorrectText : styles.filledIncorrectText}>
-                                        {correctAnswerText}
-                                    </Text>
-                                    {questionPart2}
-                                </Text>
-                            ) : (
-                                <Text style={styles.questionText}>{currentQuestion.questionText}</Text>
-                            )}
-                        </View>
-
-                        <View style={styles.optionsContainer}>
-                            {currentQuestion.options.map((option, index) => (
-                                <Animatable.View key={option} ref={el => (optionRefs.current[index] = el)}>
-                                    <TouchableOpacity
-                                        style={getOptionStyle(index)}
-                                        onPress={() => handleOptionPress(index)}
-                                        disabled={showResult}
-                                    >
-                                        <Text style={styles.optionText}>{option}</Text>
-                                    </TouchableOpacity>
-                                </Animatable.View>
-                            ))}
-                        </View>
-                        
-                        {/* --- 2. AUDIO & RECORDING BUTTONS (Below Options) --- */}
-                      {showResult &&  <View style={styles.audioRow}>
-                             <TouchableOpacity style={styles.speakerButton} onPress={handleSpeakQuestion}>
-                                <Ionicons name="volume-high" size={24} color="#81B64C" />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={[
-                                    styles.micButton, 
-                                    isRecording && styles.micButtonActive,
-                                    speechResult === 'correct' && styles.micButtonCorrect,
-                                    speechResult === 'incorrect' && styles.micButtonIncorrect
-                                ]}
-                                onPress={toggleRecording}
-                                activeOpacity={0.7}
-                            >
-                                {processingSpeech ? (
-                                    <ActivityIndicator size="small" color="#FFF" />
-                                ) : (
-                                    <Ionicons 
-                                        name={speechResult === 'correct' ? "checkmark" : speechResult === 'incorrect' ? "close" : isRecording ? "stop" : "mic"} 
-                                        size={28} 
-                                        color="#FFF" 
-                                    />
-                                )}
-                            </TouchableOpacity>
-                        </View>}
-
-                    </>
+                    // Used new MultipleChoiceQuestion component here
+                    <MultipleChoiceQuestion 
+                        question={currentQuestion}
+                        selectedAnswerIndex={selectedAnswerIndex}
+                        onOptionPress={handleOptionPress}
+                        showResult={showResult}
+                        isCorrect={isCorrect}
+                        optionRefs={optionRefs}
+                        onSpeak={handleSpeakQuestion}
+                        onToggleRecording={toggleRecording}
+                        isRecording={isRecording}
+                        processingSpeech={processingSpeech}
+                        speechResult={speechResult}
+                    />
                 )}
             </ScrollView>
 
@@ -687,14 +624,13 @@ const Test = () => {
                         </TouchableOpacity>
                     </Animatable.View>
                 ) : (
-                    // --- 3. FIXED: Button Always Green, No Wrapper ---
                     <Animatable.View
                         ref={bottomSheetRef}
                         animation="slideInUp"
                         duration={300}
                     >
                         <TouchableOpacity
-                            style={styles.bottomButton} // Use standard Green Button style
+                            style={styles.bottomButton}
                             onPress={handleNextPress}
                         >
                             <Text style={styles.bottomButtonText}>Next Question</Text>
@@ -712,7 +648,7 @@ const Test = () => {
             />
             <StatusModal 
                 visible={statusModalVisible}
-                type="info"
+                type={statusConfig.type}
                 title={statusConfig.title}
                 message={statusConfig.message}
                 confirmText="Got it!"
@@ -728,7 +664,6 @@ const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#2C2B29", justifyContent: "space-between" },
     scrollContent: { padding: 20, paddingTop: 0, paddingBottom: 40 },
     
-    // Bookmark is now inside ScrollView
     bookmarkContainer: { width: "100%", alignItems: "flex-end", paddingTop: 10, paddingBottom: 5 },
     bookmarkButton: { padding: 5 },
     
@@ -745,24 +680,9 @@ const styles = StyleSheet.create({
     coachButton: { flexDirection: 'row', backgroundColor: "#7B61FF", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, alignItems: 'center', shadowColor: "#7B61FF", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 4, elevation: 5 },
     coachText: { color: "#FFF", fontWeight: "bold", fontSize: 14 },
 
-    questionContainer: { paddingVertical: 20, backgroundColor: "#383633", borderRadius: 10, alignItems: "center", marginBottom: 40 },
-    questionText: { fontSize: 22, fontWeight: "bold", color: "#FFFFFF", textAlign: "center", paddingHorizontal: 15 },
-    filledCorrectText: { color: "#81B64C", fontWeight: "bold", textDecorationLine: "underline" },
-    filledIncorrectText: { color: "#D93025", fontWeight: "bold", textDecorationLine: "underline" },
-    optionsContainer: { width: "100%" },
-    optionButton: { backgroundColor: "#383633", padding: 20, borderRadius: 8, width: "100%", marginBottom: 15, borderWidth: 2, borderColor: "transparent" },
-    selectedOption: { backgroundColor: "#383633", padding: 20, borderRadius: 8, width: "100%", marginBottom: 15, borderWidth: 2, borderColor: "#81B64C" },
-    correctOption: { backgroundColor: "#81B64C", padding: 20, borderRadius: 8, width: "100%", marginBottom: 15, borderWidth: 2, borderColor: "#81B64C" },
-    incorrectOption: { backgroundColor: "#D93025", padding: 20, borderRadius: 8, width: "100%", marginBottom: 15, borderWidth: 2, borderColor: "#D93025" },
-    disabledOption: { backgroundColor: "#383633", padding: 20, borderRadius: 8, width: "100%", marginBottom: 15, borderWidth: 2, borderColor: "transparent", opacity: 0.6 },
-    optionText: { color: "#FFFFFF", fontSize: 18, fontWeight: "500", textAlign: "center" },
     bottomContainer: { width: "100%", paddingHorizontal: 20, paddingBottom: 20 },
     
-    // Next Button Styles (Always Green)
     bottomButton: { backgroundColor: "#81B64C", padding: 20, borderRadius: 8, width: "100%", alignItems: "center" },
-    // Redundant styles removed, as button uses base style
-    buttonCorrect: { backgroundColor: "#81B64C" },
-    buttonIncorrect: { backgroundColor: "#81B64C" }, 
     
     bottomButtonText: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
     disabledButton: { backgroundColor: "#555", opacity: 0.5 },
@@ -779,12 +699,4 @@ const styles = StyleSheet.create({
     modalStatRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#555" },
     modalStatLabel: { fontSize: 18, color: "#AAAAAA" },
     modalStatValue: { fontSize: 18, color: "#FFFFFF", fontWeight: "bold" },
-
-    // Audio Styles
-    audioRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 20, marginTop: 10, marginBottom: 20 },
-    speakerButton: { padding: 15, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 50 },
-    micButton: { padding: 15, backgroundColor: '#7B61FF', borderRadius: 50, shadowColor: "#7B61FF", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 5, elevation: 6 },
-    micButtonActive: { backgroundColor: '#D93025', transform: [{ scale: 1.1 }] },
-    micButtonCorrect: { backgroundColor: '#81B64C' },
-    micButtonIncorrect: { backgroundColor: '#D93025' }
 });
