@@ -34,20 +34,18 @@ export default function HomeStackLayout() {
                 name="Bookmarks"
                 options={{
                     title: "Bookmarks",
-                    presentation: "formSheet",
-                    gestureDirection: "vertical",
-                    animation: "slide_from_bottom",
-                    sheetGrabberVisible: true,
-                    sheetAllowedDetents: [1],
-                    sheetCornerRadius: 20,
-                    sheetExpandsWhenScrolledToEdge: true,
-                    sheetElevation: 24,
                 }}
             />
             <Stack.Screen
                 name="learn"
                 options={{
                     title: "learn",
+                }}
+            />
+            <Stack.Screen
+                name="profile"
+                options={{
+                    title: "profile",
                 }}
             />
 
