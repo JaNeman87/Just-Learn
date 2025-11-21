@@ -229,7 +229,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, Vibration, View 
 import * as Animatable from "react-native-animatable";
 import { Layout } from "react-native-reanimated";
 
-// 1. Imports for AI & Membership
+// Imports for AI & Membership
 import { useMembership } from "../app/contexts/MembershipContext";
 import { getGrammarExplanation } from "../app/services/aiService";
 import ProModal from "./ProModal";
@@ -238,7 +238,6 @@ import StatusModal from "./StatusModal";
 const shuffle = array => [...array].sort(() => Math.random() - 0.5);
 
 const SentenceBuilder = ({ question, onComplete, onMistake }) => {
-    // --- HOOKS ---
     const { isPro } = useMembership();
 
     // --- STATE ---
@@ -260,6 +259,7 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
     const wordRefs = useRef({});
     const wordMap = useRef(new Map());
 
+    // --- LOGIC ---
     useEffect(() => {
         const initialWordObjects = question.options.map((word, index) => ({
             id: `${word}-${index}`,
@@ -277,7 +277,7 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
         setAvailableWordIds(shuffled.map(w => w.id));
         setPlacedWords({});
         setWrongWordId(null);
-        setShowCoachButton(false); // Reset coach on new question
+        setShowCoachButton(false);
     }, [question]);
 
     const handleWordPress = wordId => {
@@ -291,17 +291,16 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
             setAvailableWordIds(prev => prev.filter(id => id !== wordId));
             setPlacedWords(prev => ({ ...prev, [nextWordIndex]: wordObj }));
             setWrongWordId(null);
-            setShowCoachButton(false); // Hide coach if they got it right
+            setShowCoachButton(false);
 
             if (nextWordIndex + 1 === question.correctSentence.length) {
                 setTimeout(() => onComplete(true), 500);
             }
         } else {
-            // --- WRONG! ---
+            // Wrong
             Vibration.vibrate(400);
             if (onMistake) onMistake();
 
-            // 1. Capture Error Context for AI
             const currentSentence = Object.values(placedWords).map(w => w.text).join(" ");
             setLastErrorContext({
                 context: currentSentence,
@@ -310,7 +309,7 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
                 fullSentence: question.correctSentence.join(" ")
             });
             
-            setShowCoachButton(true); // <--- This triggers the button to appear
+            setShowCoachButton(true);
 
             setWrongWordId(wordObj.id);
             wordRefs.current[wordObj.id]?.shake(500);
@@ -325,7 +324,6 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
         }
 
         setCoachLoading(true);
-        // Call the AI Service
         const explanation = await getGrammarExplanation(
             lastErrorContext.context,
             lastErrorContext.wrongWord,
@@ -351,7 +349,7 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
 
     return (
         <View style={styles.container}>
-            {/* --- AI COACH BUTTON (Visible only after mistake) --- */}
+            {/* --- AI COACH BUTTON --- */}
             {showCoachButton && (
                 <Animatable.View animation="bounceIn" style={styles.coachContainer}>
                     <TouchableOpacity 
@@ -386,13 +384,14 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
                                     key={placedWord.id}
                                     from={{ opacity: 0, scale: 0.5, translateY: 10 }}
                                     animate={{ opacity: 1, scale: 1, translateY: 0 }}
-                                    style={{ alignSelf: 'center' }} 
+                                    style={{ alignSelf: 'center' }}
                                 >
                                     <View style={styles.wordChipPlaced}>
                                         <Text style={styles.wordText} selectable={false}>{placedWord.text}</Text>
                                     </View>
                                 </MotiView>
                             ) : (
+                                // --- REVERTED: Transparent empty slot ---
                                 <View style={styles.wordSlotEmpty} />
                             )}
                             <View style={[styles.blankLine, { width: word.length * 12 + 20 }]} />
@@ -452,11 +451,10 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
 const styles = StyleSheet.create({
     container: { width: "100%", alignItems: "center" },
     
-    // Coach Button
     coachContainer: { marginBottom: 15 },
     coachButton: {
         flexDirection: 'row',
-        backgroundColor: "#7B61FF", // Purple for AI
+        backgroundColor: "#7B61FF",
         paddingVertical: 8,
         paddingHorizontal: 16,
         borderRadius: 20,
@@ -479,10 +477,16 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         flexWrap: "wrap",
         justifyContent: "center",
-        alignItems: 'flex-start', // Important for layout
+        alignItems: 'flex-start',
     },
     slotContainer: { alignItems: "center", marginHorizontal: 4, marginBottom: 12 },
-    wordSlotEmpty: { height: 46, width: 60, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 10 },
+    
+    // --- REVERTED STYLE ---
+    wordSlotEmpty: { 
+        height: 46, 
+        width: 60, 
+        // No background color, no border radius - just invisible space holder
+    },
     
     wordChipPlaced: {
         backgroundColor: "#81B64C",
