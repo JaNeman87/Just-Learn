@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"; // 1. Add useMemo
 import {
     ActivityIndicator,
     Modal,
@@ -19,13 +19,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MatchingQuestion from "../../components/MatchingQuestion";
 import SentenceBuilder from "../../components/SentenceBuilder";
 
-// 1. NEW IMPORTS
 import ProModal from "../../components/ProModal";
 import StatusModal from "../../components/StatusModal";
 import { useMembership } from "../contexts/MembershipContext";
 import { getGrammarExplanation } from "../services/aiService";
 
-// Download Button Imports
 import DownloadButton from "../../components/DownloadButton";
 
 const STATS_KEY = "@JustLearnStats";
@@ -36,20 +34,35 @@ const LEVEL_KEY = "@JustLearn:selectedLevel";
 const Test = () => {
     const route = useRoute();
     const navigation = useNavigation();
-    const { isPro } = useMembership(); // Get Pro Status
+    const { isPro } = useMembership();
 
-    let testData = route.params.test;
-    if (typeof testData === "string") {
-        try {
-            testData = JSON.parse(testData);
-        } catch (e) {
-            console.error("Failed to parse test data:", e);
-            navigation.goBack();
-            return null;
+    // --- 2. FIX: Memoize the Test Data Parsing ---
+    // This prevents the "test" object from being recreated on every render,
+    // which was causing SentenceBuilder to reset when state changed.
+    const parsedTest = useMemo(() => {
+        let rawData = route.params.test;
+        if (typeof rawData === "string") {
+            try {
+                return JSON.parse(rawData);
+            } catch (e) {
+                console.error("Failed to parse test data:", e);
+                return null;
+            }
         }
-    }
-    const { test, origin } = route.params;
-    const { test: parsedTest } = { test: testData };
+        return rawData;
+    }, [route.params.test]);
+
+    const origin = route.params.origin;
+
+    // Guard clause if parsing failed
+    useEffect(() => {
+        if (!parsedTest) {
+            navigation.goBack();
+        }
+    }, [parsedTest, navigation]);
+
+    if (!parsedTest) return null;
+    // -------------------------------------------
 
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [selectedAnswerIndex, setSelectedAnswerIndex] = useState(null);
@@ -68,14 +81,12 @@ const Test = () => {
     const [savedProgress, setSavedProgress] = useState(null);
     const [interactiveMistakeMade, setInteractiveMistakeMade] = useState(false);
 
-    // --- 2. AI STATE ---
     const [aiContext, setAiContext] = useState(null);
     const [coachLoading, setCoachLoading] = useState(false);
     const [proModalVisible, setProModalVisible] = useState(false);
     const [statusModalVisible, setStatusModalVisible] = useState(false);
     const [statusConfig, setStatusConfig] = useState({});
 
-    // Download State
     const [currentLevelId, setCurrentLevelId] = useState(null);
 
     const optionRefs = useRef([]);
@@ -262,11 +273,9 @@ const Test = () => {
         
         if (correct) {
             setCorrectAnswers(prev => prev + 1);
-            setAiContext(null); // Clear AI context on success
+            setAiContext(null);
         } else {
             setIncorrectAnswers(prev => prev + 1);
-            
-            // --- 3. CAPTURE MISTAKE FOR AI ---
             setAiContext({
                 question: currentQuestion.questionText,
                 userAnswer: currentQuestion.options[selectedAnswerIndex],
@@ -288,7 +297,6 @@ const Test = () => {
         }
     };
 
-    // --- 4. AI BUTTON HANDLER ---
     const handleAiExplain = async () => {
         if (!isPro) {
             setProModalVisible(true);
@@ -296,7 +304,6 @@ const Test = () => {
         }
 
         setCoachLoading(true);
-        // For standard questions, 'context' is empty since the question itself is the context
         const explanation = await getGrammarExplanation(
             "", 
             aiContext.userAnswer,
@@ -340,7 +347,7 @@ const Test = () => {
             setIsCorrect(null);
             setIsInteractiveComplete(false);
             setInteractiveMistakeMade(false);
-            setAiContext(null); // Reset AI
+            setAiContext(null);
             optionRefs.current = [];
         } else {
             setIsTestComplete(false);
@@ -405,7 +412,6 @@ const Test = () => {
 
     return (
         <SafeAreaView style={styles.container} edges={["bottom", "left", "right"]}>
-            {/* ... Modals (Resume, Stats) ... */}
             <Modal animationType="fade" transparent={true} visible={showResumeModal} onRequestClose={handleStartOver}>
                 <View style={styles.modalContainer}>
                     <View style={styles.modalContent}>
@@ -446,14 +452,37 @@ const Test = () => {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                <View style={styles.bookmarkContainer}>
-                    <TouchableOpacity onPress={handleBookmarkToggle} style={styles.bookmarkButton}>
-                        <Ionicons
-                            name={isBookmarked ? "bookmark" : "bookmark-outline"}
-                            size={28}
-                            color={isBookmarked ? "#81B64C" : "#FFFFFF"}
-                        />
-                    </TouchableOpacity>
+                <View style={styles.topBar}>
+                    <View style={styles.topBarSide} />
+                    <View style={styles.topBarCenter}>
+                        {showResult && !isCorrect && aiContext && (
+                            <Animatable.View animation="bounceIn">
+                                <TouchableOpacity 
+                                    style={styles.coachButton} 
+                                    onPress={handleAiExplain}
+                                    disabled={coachLoading}
+                                >
+                                    {coachLoading ? (
+                                        <ActivityIndicator size="small" color="#FFF" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name={isPro ? "bulb" : "lock-closed"} size={20} color="#FFF" style={{ marginRight: 5 }} />
+                                            <Text style={styles.coachText}>Why is this wrong?</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            </Animatable.View>
+                        )}
+                    </View>
+                    <View style={styles.topBarSide}>
+                        <TouchableOpacity onPress={handleBookmarkToggle} style={styles.bookmarkButton}>
+                            <Ionicons
+                                name={isBookmarked ? "bookmark" : "bookmark-outline"}
+                                size={28}
+                                color={isBookmarked ? "#81B64C" : "#FFFFFF"}
+                            />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 <View style={styles.progressContainer}>
@@ -463,26 +492,6 @@ const Test = () => {
                     </View>
                 </View>
                 
-                {/* --- 5. AI COACH BUTTON (Inserted above question) --- */}
-                {showResult && !isCorrect && aiContext && (
-                    <Animatable.View animation="bounceIn" style={styles.coachContainer}>
-                        <TouchableOpacity 
-                            style={styles.coachButton} 
-                            onPress={handleAiExplain}
-                            disabled={coachLoading}
-                        >
-                            {coachLoading ? (
-                                <ActivityIndicator size="small" color="#FFF" />
-                            ) : (
-                                <>
-                                    <Ionicons name={isPro ? "bulb" : "lock-closed"} size={20} color="#FFF" style={{ marginRight: 5 }} />
-                                    <Text style={styles.coachText}>Why is this wrong?</Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
-                    </Animatable.View>
-                )}
-
                 {currentQuestion.type === "matching" ? (
                     <MatchingQuestion 
                         question={currentQuestion} 
@@ -565,7 +574,6 @@ const Test = () => {
                 )}
             </View>
 
-            {/* --- 6. New Modals --- */}
             <ProModal 
                 visible={proModalVisible} 
                 onClose={() => setProModalVisible(false)} 
@@ -588,26 +596,34 @@ const Test = () => {
 export default Test;
 
 const styles = StyleSheet.create({
-    // ... (Existing styles) ...
     container: { flex: 1, backgroundColor: "#2C2B29", justifyContent: "space-between" },
     scrollContainer: {},
     scrollContent: { padding: 20, paddingTop: 0, paddingBottom: 40 },
-    bookmarkContainer: { width: "100%", alignItems: "flex-end", paddingTop: 10, paddingBottom: 5 },
-    bookmarkButton: { padding: 5 },
-    progressContainer: { width: "100%", paddingVertical: 10, marginBottom: 10 },
-    progressText: { color: "#AAAAAA", fontSize: 14, fontWeight: "bold", textAlign: "right", marginBottom: 5 },
-    progressBarTrack: { height: 10, width: "100%", backgroundColor: "#383633", borderRadius: 5 },
-    progressBarFill: { height: "100%", backgroundColor: "#81B64C", borderRadius: 5 },
-    congratsContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-    congratsTitle: { fontSize: 32, fontWeight: "bold", color: "#81B64C", marginBottom: 20 },
-    congratsSubtitle: { fontSize: 18, color: "#AAAAAA", marginBottom: 10 },
-    congratsTestTitle: { fontSize: 24, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" },
     
-    // --- 7. COPIED STYLES from SentenceBuilder (Purple Pill) ---
-    coachContainer: { alignItems: 'center', marginBottom: 15 },
+    topBar: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        paddingTop: 10,
+        paddingBottom: 5,
+        minHeight: 50,
+    },
+    topBarSide: {
+        width: 40, 
+        alignItems: 'flex-end', 
+    },
+    topBarCenter: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    bookmarkButton: { padding: 5 },
+    
     coachButton: {
         flexDirection: 'row',
-        backgroundColor: "#7B61FF", // Purple
+        backgroundColor: "#7B61FF",
         paddingVertical: 8,
         paddingHorizontal: 16,
         borderRadius: 20,
@@ -619,8 +635,15 @@ const styles = StyleSheet.create({
         elevation: 5,
     },
     coachText: { color: "#FFF", fontWeight: "bold", fontSize: 14 },
-    // -----------------------------------------------------------
 
+    progressContainer: { width: "100%", paddingVertical: 10, marginBottom: 10 },
+    progressText: { color: "#AAAAAA", fontSize: 14, fontWeight: "bold", textAlign: "right", marginBottom: 5 },
+    progressBarTrack: { height: 10, width: "100%", backgroundColor: "#383633", borderRadius: 5 },
+    progressBarFill: { height: "100%", backgroundColor: "#81B64C", borderRadius: 5 },
+    congratsContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+    congratsTitle: { fontSize: 32, fontWeight: "bold", color: "#81B64C", marginBottom: 20 },
+    congratsSubtitle: { fontSize: 18, color: "#AAAAAA", marginBottom: 10 },
+    congratsTestTitle: { fontSize: 24, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" },
     questionContainer: { paddingVertical: 20, backgroundColor: "#383633", borderRadius: 10, alignItems: "center", marginBottom: 40 },
     questionText: { fontSize: 22, fontWeight: "bold", color: "#FFFFFF", textAlign: "center", paddingHorizontal: 15 },
     filledCorrectText: { color: "#81B64C", fontWeight: "bold", textDecorationLine: "underline" },
