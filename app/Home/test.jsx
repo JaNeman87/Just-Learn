@@ -34,7 +34,7 @@ const LEVEL_KEY = "@JustLearn:selectedLevel";
 const Test = () => {
     const route = useRoute();
     const navigation = useNavigation();
-    const { isPro } = useMembership();
+    const { isPro ,updateProgress} = useMembership();
 
     // --- 2. FIX: Memoize the Test Data Parsing ---
     // This prevents the "test" object from being recreated on every render,
@@ -358,6 +358,9 @@ const Test = () => {
     const handleCloseStatsModal = () => {
         updateTestStats(parsedTest.id, correctAnswers);
         saveProgress(parsedTest.questions.length, correctAnswers, incorrectAnswers);
+        // 3. UPDATE STREAK!
+        // Award 50 XP for completing a test
+        updateProgress(50);
         setShowStatsModal(false);
         setIsTestComplete(true);
     };
@@ -369,6 +372,15 @@ const Test = () => {
                     <Text style={styles.congratsTitle}>Congratulations!</Text>
                     <Text style={styles.congratsSubtitle}>You have finished:</Text>
                     <Text style={styles.congratsTestTitle}>{parsedTest.title}</Text>
+                    
+                    {/* Optional: Add visual feedback for streak here if you want */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 20 }}>
+                        <Ionicons name="flame" size={30} color="#FFD700" />
+                        <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginLeft: 8 }}>
+                            Streak Updated!
+                        </Text>
+                    </View>
+
                 </View>
                 <View style={styles.bottomContainer}>
                     <TouchableOpacity style={styles.bottomButton} onPress={() => navigation.goBack()}>

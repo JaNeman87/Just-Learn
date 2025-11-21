@@ -2,49 +2,57 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useContext, useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { supabase } from "../../lib/supabase";
-import { useAuth } from "./AuthContext";
-// 1. Import the cleanup function
 import { clearAllOfflineContent } from "../services/contentService";
+import { useAuth } from "./AuthContext";
 
 const MembershipContext = createContext();
 
 export const MembershipProvider = ({ children }) => {
     const { user, isGuest } = useAuth();
     const [isPro, setIsPro] = useState(false);
+    
+    // --- NEW: Gamification State ---
+    const [streak, setStreak] = useState(0);
+    const [totalXP, setTotalXP] = useState(0);
 
-    // 1. SYNC: Load status
+    // 1. SYNC: Load status & Gamification Data
     useEffect(() => {
         const loadStatus = async () => {
             try {
-                // Force Guest to FREE immediately
+                // GUEST LOGIC
                 if (isGuest) {
                     setIsPro(false);
+                    // Guests store streak locally
+                    const localStreak = await AsyncStorage.getItem("guest_streak");
+                    setStreak(localStreak ? parseInt(localStreak) : 0);
                     await AsyncStorage.setItem("user_membership_status", "FREE");
-                    await clearAllOfflineContent(); // <--- Clean up if guest
+                    await clearAllOfflineContent();
                     return;
                 }
 
-                // Load Local Status
+                // LOGGED IN LOGIC
                 const localStatus = await AsyncStorage.getItem("user_membership_status");
                 let currentStatus = localStatus === "PRO";
                 
-                // Check Database Truth
                 if (user) {
+                    // Fetch Profile (Pro Status + Streak + XP)
                     const { data, error } = await supabase
                         .from('profiles')
-                        .select('is_pro')
+                        .select('is_pro, current_streak, total_xp')
                         .eq('id', user.id)
-                        .maybeSingle(); 
+                        .maybeSingle();
 
                     if (data) {
                         currentStatus = data.is_pro;
+                        setStreak(data.current_streak || 0);
+                        setTotalXP(data.total_xp || 0);
+                        
                         await AsyncStorage.setItem("user_membership_status", currentStatus ? "PRO" : "FREE");
                     }
                 }
                 
                 setIsPro(currentStatus);
 
-                // 2. AUTO-CLEANUP: If resolved status is FREE, wipe downloads
                 if (!currentStatus) {
                     await clearAllOfflineContent();
                 }
@@ -57,37 +65,58 @@ export const MembershipProvider = ({ children }) => {
         loadStatus();
     }, [user, isGuest]);
 
-    // 2. TOGGLE
+    // 2. NEW: Function to Update Progress (Call this when test finishes)
+    const updateProgress = async (xpGained) => {
+        if (isGuest) {
+            // Simple local logic for guests (simplified)
+            const newStreak = streak + 1; 
+            setStreak(newStreak);
+            await AsyncStorage.setItem("guest_streak", newStreak.toString());
+            return;
+        }
+
+        try {
+            // Call the Smart SQL Function
+            const { error } = await supabase.rpc('update_learning_progress', { 
+                xp_gained: xpGained 
+            });
+
+            if (!error) {
+                // Refetch to get the updated streak from server calculation
+                const { data } = await supabase
+                    .from('profiles')
+                    .select('current_streak, total_xp')
+                    .eq('id', user.id)
+                    .single();
+                
+                if (data) {
+                    setStreak(data.current_streak);
+                    setTotalXP(data.total_xp);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to update progress:", e);
+        }
+    };
+
+    // 3. TOGGLE (Dev Only)
     const toggleMembership = async () => {
         if (isGuest) {
             Alert.alert("Dev Access Denied", "You must be signed in to toggle the Pro status.");
             return; 
         }
-
         try {
             const newStatus = !isPro;
-            
             setIsPro(newStatus);
             await AsyncStorage.setItem("user_membership_status", newStatus ? "PRO" : "FREE");
-
-            // 3. MANUAL CLEANUP: If switching to FREE, wipe downloads
-            if (!newStatus) {
-                await clearAllOfflineContent();
-            }
+            if (!newStatus) await clearAllOfflineContent();
 
             if (user) {
-                const { error } = await supabase
-                    .from('profiles')
-                    .upsert({ 
-                        id: user.id, 
-                        is_pro: newStatus,
-                        updated_at: new Date()
-                    });
-                
-                if (error) {
-                    console.error("Supabase sync failed:", error);
-                    Alert.alert("Sync Error", "Could not save status to the database.");
-                }
+                await supabase.from('profiles').upsert({ 
+                    id: user.id, 
+                    is_pro: newStatus,
+                    updated_at: new Date()
+                });
             }
         } catch (error) {
             console.error("Failed to save membership status", error);
@@ -95,7 +124,7 @@ export const MembershipProvider = ({ children }) => {
     };
 
     return (
-        <MembershipContext.Provider value={{ isPro, toggleMembership }}>
+        <MembershipContext.Provider value={{ isPro, streak, totalXP, toggleMembership, updateProgress }}>
             {children}
         </MembershipContext.Provider>
     );
