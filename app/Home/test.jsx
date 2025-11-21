@@ -1,9 +1,12 @@
 
+
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { Audio } from 'expo-av';
 import * as Haptics from "expo-haptics";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"; // 1. Add useMemo
+import * as Speech from 'expo-speech';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Modal,
@@ -19,12 +22,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import MatchingQuestion from "../../components/MatchingQuestion";
 import SentenceBuilder from "../../components/SentenceBuilder";
 
+import DownloadButton from "../../components/DownloadButton";
 import ProModal from "../../components/ProModal";
 import StatusModal from "../../components/StatusModal";
 import { useMembership } from "../contexts/MembershipContext";
-import { getGrammarExplanation } from "../services/aiService";
-
-import DownloadButton from "../../components/DownloadButton";
+import { getGrammarExplanation, transcribeAudio } from "../services/aiService";
 
 const STATS_KEY = "@JustLearnStats";
 const BOOKMARKS_KEY = "@JustLearnBookmarks";
@@ -34,11 +36,8 @@ const LEVEL_KEY = "@JustLearn:selectedLevel";
 const Test = () => {
     const route = useRoute();
     const navigation = useNavigation();
-    const { isPro ,updateProgress} = useMembership();
+    const { isPro } = useMembership();
 
-    // --- 2. FIX: Memoize the Test Data Parsing ---
-    // This prevents the "test" object from being recreated on every render,
-    // which was causing SentenceBuilder to reset when state changed.
     const parsedTest = useMemo(() => {
         let rawData = route.params.test;
         if (typeof rawData === "string") {
@@ -52,17 +51,13 @@ const Test = () => {
         return rawData;
     }, [route.params.test]);
 
-    const origin = route.params.origin;
+    const { origin } = route.params;
 
-    // Guard clause if parsing failed
     useEffect(() => {
-        if (!parsedTest) {
-            navigation.goBack();
-        }
+        if (!parsedTest) navigation.goBack();
     }, [parsedTest, navigation]);
 
     if (!parsedTest) return null;
-    // -------------------------------------------
 
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [selectedAnswerIndex, setSelectedAnswerIndex] = useState(null);
@@ -81,11 +76,18 @@ const Test = () => {
     const [savedProgress, setSavedProgress] = useState(null);
     const [interactiveMistakeMade, setInteractiveMistakeMade] = useState(false);
 
+    // AI & Recording State
     const [aiContext, setAiContext] = useState(null);
     const [coachLoading, setCoachLoading] = useState(false);
     const [proModalVisible, setProModalVisible] = useState(false);
     const [statusModalVisible, setStatusModalVisible] = useState(false);
     const [statusConfig, setStatusConfig] = useState({});
+
+    const [isRecording, setIsRecording] = useState(false);
+    const [processingSpeech, setProcessingSpeech] = useState(false);
+    const [speechResult, setSpeechResult] = useState(null);
+    const recordingRef = useRef(null);
+    const isRecordingDesired = useRef(false);
 
     const [currentLevelId, setCurrentLevelId] = useState(null);
 
@@ -95,12 +97,118 @@ const Test = () => {
     const currentQuestion = !isTestComplete ? parsedTest.questions[currentQuestionIndex] : null;
 
     useEffect(() => {
+        (async () => {
+            const { status } = await Audio.requestPermissionsAsync();
+            if (status === 'granted') {
+                await Audio.setAudioModeAsync({
+                    allowsRecordingIOS: true,
+                    playsInSilentModeIOS: true,
+                });
+            }
+        })();
+    }, []);
+
+    useEffect(() => {
         const loadLevelId = async () => {
             const savedLevel = await AsyncStorage.getItem(LEVEL_KEY) || "A1";
             setCurrentLevelId(savedLevel);
         };
         loadLevelId();
     }, []);
+
+    // --- SPEECH FUNCTIONS ---
+    const speak = (text) => {
+        Speech.stop();
+        Speech.speak(text, { language: 'de', pitch: 1.0, rate: 0.9 });
+    };
+
+    const handleSpeakQuestion = () => {
+        let textToSpeak = currentQuestion.questionText;
+        if (textToSpeak.includes("___") && showResult) {
+            const answer = currentQuestion.options[currentQuestion.correctAnswerIndex];
+            textToSpeak = textToSpeak.replace(/_+/g, answer);
+        } else if (textToSpeak.includes("___")) {
+            textToSpeak = textToSpeak.replace(/_+/g, " ... ");
+        }
+        speak(textToSpeak);
+    };
+
+    const toggleRecording = async () => {
+        if (isRecording) await stopRecording();
+        else await startRecording();
+    };
+
+    const startRecording = async () => {
+        if (!isPro) {
+            setProModalVisible(true);
+            return;
+        }
+        isRecordingDesired.current = true;
+        setIsRecording(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setSpeechResult(null);
+
+        try {
+            if (recordingRef.current) {
+                try { await recordingRef.current.stopAndUnloadAsync(); } catch (e) {}
+                recordingRef.current = null;
+            }
+            const { recording } = await Audio.Recording.createAsync(
+                Audio.RecordingOptionsPresets.HIGH_QUALITY
+            );
+            if (!isRecordingDesired.current) {
+                try { await recording.stopAndUnloadAsync(); } catch (e) {}
+                setIsRecording(false);
+                return;
+            }
+            recordingRef.current = recording;
+        } catch (err) {
+            console.error('Failed to start recording', err);
+            setIsRecording(false);
+        }
+    };
+
+    const stopRecording = async () => {
+        isRecordingDesired.current = false;
+        setIsRecording(false);
+        const activeRecording = recordingRef.current;
+        if (!activeRecording) return;
+
+        setProcessingSpeech(true);
+        recordingRef.current = null;
+
+        try {
+            await activeRecording.stopAndUnloadAsync();
+            const uri = activeRecording.getURI();
+            const spokenText = await transcribeAudio(uri);
+
+            if (spokenText) {
+                const cleanSpoken = spokenText.toLowerCase().replace(/[.,!?]/g, "").trim();
+                
+                let targetText = currentQuestion.questionText;
+                if (targetText.includes("___")) {
+                    const answer = currentQuestion.options[currentQuestion.correctAnswerIndex];
+                    targetText = targetText.replace(/_+/g, answer);
+                }
+                const cleanTarget = targetText.toLowerCase().replace(/[.,!?]/g, "").trim();
+
+                if (cleanSpoken.includes(cleanTarget) || cleanTarget.includes(cleanSpoken)) {
+                    setSpeechResult('correct');
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                } else {
+                    setSpeechResult('incorrect');
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                    setStatusConfig({ type: 'error', title: 'Try Again', message: `You said: "${spokenText}"`, confirmText: 'OK' });
+                    setStatusModalVisible(true);
+                }
+            }
+        } catch (error) {
+            if (!error.message?.includes("no valid audio data")) {
+                console.error("Stop Recording Error:", error);
+            }
+        }
+        setProcessingSpeech(false);
+    };
 
     const handleInteractiveMistake = () => {
         if (!interactiveMistakeMade) {
@@ -233,6 +341,7 @@ const Test = () => {
         }
     };
 
+    // --- UPDATED HEADER: Only Download Button ---
     useLayoutEffect(() => {
         navigation.setOptions({
             headerRight: () => (
@@ -242,19 +351,10 @@ const Test = () => {
                             <DownloadButton levelId={currentLevelId} />
                         </View>
                     )}
-                    {currentQuestion && (
-                        <TouchableOpacity onPress={handleBookmarkToggle} style={{ padding: 10 }}>
-                            <Ionicons
-                                name={isBookmarked ? "bookmark" : "bookmark-outline"}
-                                size={24}
-                                color={isBookmarked ? "#81B64C" : "#FFFFFF"}
-                            />
-                        </TouchableOpacity>
-                    )}
                 </View>
             ),
         });
-    }, [navigation, isBookmarked, currentQuestion, currentLevelId]);
+    }, [navigation, currentLevelId]);
 
     const updateQuestionStats = async (questionId, isCorrect) => {};
     const updateTestStats = async (testId, score) => {};
@@ -348,6 +448,7 @@ const Test = () => {
             setIsInteractiveComplete(false);
             setInteractiveMistakeMade(false);
             setAiContext(null);
+            setSpeechResult(null);
             optionRefs.current = [];
         } else {
             setIsTestComplete(false);
@@ -358,9 +459,6 @@ const Test = () => {
     const handleCloseStatsModal = () => {
         updateTestStats(parsedTest.id, correctAnswers);
         saveProgress(parsedTest.questions.length, correctAnswers, incorrectAnswers);
-        // 3. UPDATE STREAK!
-        // Award 50 XP for completing a test
-        updateProgress(50);
         setShowStatsModal(false);
         setIsTestComplete(true);
     };
@@ -372,15 +470,6 @@ const Test = () => {
                     <Text style={styles.congratsTitle}>Congratulations!</Text>
                     <Text style={styles.congratsSubtitle}>You have finished:</Text>
                     <Text style={styles.congratsTestTitle}>{parsedTest.title}</Text>
-                    
-                    {/* Optional: Add visual feedback for streak here if you want */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 20 }}>
-                        <Ionicons name="flame" size={30} color="#FFD700" />
-                        <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginLeft: 8 }}>
-                            Streak Updated!
-                        </Text>
-                    </View>
-
                 </View>
                 <View style={styles.bottomContainer}>
                     <TouchableOpacity style={styles.bottomButton} onPress={() => navigation.goBack()}>
@@ -464,37 +553,15 @@ const Test = () => {
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                <View style={styles.topBar}>
-                    <View style={styles.topBarSide} />
-                    <View style={styles.topBarCenter}>
-                        {showResult && !isCorrect && aiContext && (
-                            <Animatable.View animation="bounceIn">
-                                <TouchableOpacity 
-                                    style={styles.coachButton} 
-                                    onPress={handleAiExplain}
-                                    disabled={coachLoading}
-                                >
-                                    {coachLoading ? (
-                                        <ActivityIndicator size="small" color="#FFF" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name={isPro ? "bulb" : "lock-closed"} size={20} color="#FFF" style={{ marginRight: 5 }} />
-                                            <Text style={styles.coachText}>Why is this wrong?</Text>
-                                        </>
-                                    )}
-                                </TouchableOpacity>
-                            </Animatable.View>
-                        )}
-                    </View>
-                    <View style={styles.topBarSide}>
-                        <TouchableOpacity onPress={handleBookmarkToggle} style={styles.bookmarkButton}>
-                            <Ionicons
-                                name={isBookmarked ? "bookmark" : "bookmark-outline"}
-                                size={28}
-                                color={isBookmarked ? "#81B64C" : "#FFFFFF"}
-                            />
-                        </TouchableOpacity>
-                    </View>
+                {/* --- 1. BOOKMARK ICON IN SCROLLVIEW --- */}
+                <View style={styles.bookmarkContainer}>
+                    <TouchableOpacity onPress={handleBookmarkToggle} style={styles.bookmarkButton}>
+                        <Ionicons
+                            name={isBookmarked ? "bookmark" : "bookmark-outline"}
+                            size={28}
+                            color={isBookmarked ? "#81B64C" : "#FFFFFF"}
+                        />
+                    </TouchableOpacity>
                 </View>
 
                 <View style={styles.progressContainer}>
@@ -504,6 +571,26 @@ const Test = () => {
                     </View>
                 </View>
                 
+                {/* AI COACH BUTTON (Above Question) */}
+                {showResult && !isCorrect && aiContext && (
+                    <Animatable.View animation="bounceIn" style={styles.coachContainer}>
+                        <TouchableOpacity 
+                            style={styles.coachButton} 
+                            onPress={handleAiExplain}
+                            disabled={coachLoading}
+                        >
+                            {coachLoading ? (
+                                <ActivityIndicator size="small" color="#FFF" />
+                            ) : (
+                                <>
+                                    <Ionicons name={isPro ? "bulb" : "lock-closed"} size={20} color="#FFF" style={{ marginRight: 5 }} />
+                                    <Text style={styles.coachText}>Why is this wrong?</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+                    </Animatable.View>
+                )}
+
                 {currentQuestion.type === "matching" ? (
                     <MatchingQuestion 
                         question={currentQuestion} 
@@ -533,6 +620,7 @@ const Test = () => {
                                 <Text style={styles.questionText}>{currentQuestion.questionText}</Text>
                             )}
                         </View>
+
                         <View style={styles.optionsContainer}>
                             {currentQuestion.options.map((option, index) => (
                                 <Animatable.View key={option} ref={el => (optionRefs.current[index] = el)}>
@@ -546,6 +634,35 @@ const Test = () => {
                                 </Animatable.View>
                             ))}
                         </View>
+                        
+                        {/* --- 2. AUDIO & RECORDING BUTTONS (Below Options) --- */}
+                      {showResult &&  <View style={styles.audioRow}>
+                             <TouchableOpacity style={styles.speakerButton} onPress={handleSpeakQuestion}>
+                                <Ionicons name="volume-high" size={24} color="#81B64C" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[
+                                    styles.micButton, 
+                                    isRecording && styles.micButtonActive,
+                                    speechResult === 'correct' && styles.micButtonCorrect,
+                                    speechResult === 'incorrect' && styles.micButtonIncorrect
+                                ]}
+                                onPress={toggleRecording}
+                                activeOpacity={0.7}
+                            >
+                                {processingSpeech ? (
+                                    <ActivityIndicator size="small" color="#FFF" />
+                                ) : (
+                                    <Ionicons 
+                                        name={speechResult === 'correct' ? "checkmark" : speechResult === 'incorrect' ? "close" : isRecording ? "stop" : "mic"} 
+                                        size={28} 
+                                        color="#FFF" 
+                                    />
+                                )}
+                            </TouchableOpacity>
+                        </View>}
+
                     </>
                 )}
             </ScrollView>
@@ -570,14 +687,14 @@ const Test = () => {
                         </TouchableOpacity>
                     </Animatable.View>
                 ) : (
+                    // --- 3. FIXED: Button Always Green, No Wrapper ---
                     <Animatable.View
                         ref={bottomSheetRef}
                         animation="slideInUp"
                         duration={300}
-                        style={[isCorrect ? styles.bannerCorrect : styles.bannerIncorrect, { borderRadius: 8 }]}
                     >
                         <TouchableOpacity
-                            style={[styles.bottomButton, isCorrect ? styles.buttonCorrect : styles.buttonIncorrect]}
+                            style={styles.bottomButton} // Use standard Green Button style
                             onPress={handleNextPress}
                         >
                             <Text style={styles.bottomButtonText}>Next Question</Text>
@@ -590,8 +707,8 @@ const Test = () => {
                 visible={proModalVisible} 
                 onClose={() => setProModalVisible(false)} 
                 onGoPro={handleGoProNav} 
-                featureTitle="AI Grammar Coach"
-                featureDescription="Get instant explanations for your mistakes."
+                featureTitle="AI Features"
+                featureDescription="Unlock Grammar Coach and Pronunciation Practice with Pro."
             />
             <StatusModal 
                 visible={statusModalVisible}
@@ -609,45 +726,12 @@ export default Test;
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#2C2B29", justifyContent: "space-between" },
-    scrollContainer: {},
     scrollContent: { padding: 20, paddingTop: 0, paddingBottom: 40 },
     
-    topBar: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        width: '100%',
-        paddingTop: 10,
-        paddingBottom: 5,
-        minHeight: 50,
-    },
-    topBarSide: {
-        width: 40, 
-        alignItems: 'flex-end', 
-    },
-    topBarCenter: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-
+    // Bookmark is now inside ScrollView
+    bookmarkContainer: { width: "100%", alignItems: "flex-end", paddingTop: 10, paddingBottom: 5 },
     bookmarkButton: { padding: 5 },
     
-    coachButton: {
-        flexDirection: 'row',
-        backgroundColor: "#7B61FF",
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        borderRadius: 20,
-        alignItems: 'center',
-        shadowColor: "#7B61FF",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.4,
-        shadowRadius: 4,
-        elevation: 5,
-    },
-    coachText: { color: "#FFF", fontWeight: "bold", fontSize: 14 },
-
     progressContainer: { width: "100%", paddingVertical: 10, marginBottom: 10 },
     progressText: { color: "#AAAAAA", fontSize: 14, fontWeight: "bold", textAlign: "right", marginBottom: 5 },
     progressBarTrack: { height: 10, width: "100%", backgroundColor: "#383633", borderRadius: 5 },
@@ -656,6 +740,11 @@ const styles = StyleSheet.create({
     congratsTitle: { fontSize: 32, fontWeight: "bold", color: "#81B64C", marginBottom: 20 },
     congratsSubtitle: { fontSize: 18, color: "#AAAAAA", marginBottom: 10 },
     congratsTestTitle: { fontSize: 24, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" },
+    
+    coachContainer: { alignItems: 'center', marginBottom: 15 },
+    coachButton: { flexDirection: 'row', backgroundColor: "#7B61FF", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, alignItems: 'center', shadowColor: "#7B61FF", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 4, elevation: 5 },
+    coachText: { color: "#FFF", fontWeight: "bold", fontSize: 14 },
+
     questionContainer: { paddingVertical: 20, backgroundColor: "#383633", borderRadius: 10, alignItems: "center", marginBottom: 40 },
     questionText: { fontSize: 22, fontWeight: "bold", color: "#FFFFFF", textAlign: "center", paddingHorizontal: 15 },
     filledCorrectText: { color: "#81B64C", fontWeight: "bold", textDecorationLine: "underline" },
@@ -668,11 +757,13 @@ const styles = StyleSheet.create({
     disabledOption: { backgroundColor: "#383633", padding: 20, borderRadius: 8, width: "100%", marginBottom: 15, borderWidth: 2, borderColor: "transparent", opacity: 0.6 },
     optionText: { color: "#FFFFFF", fontSize: 18, fontWeight: "500", textAlign: "center" },
     bottomContainer: { width: "100%", paddingHorizontal: 20, paddingBottom: 20 },
-    bannerCorrect: { backgroundColor: "#81B64C" },
-    bannerIncorrect: { backgroundColor: "#D93025" },
+    
+    // Next Button Styles (Always Green)
     bottomButton: { backgroundColor: "#81B64C", padding: 20, borderRadius: 8, width: "100%", alignItems: "center" },
+    // Redundant styles removed, as button uses base style
     buttonCorrect: { backgroundColor: "#81B64C" },
-    buttonIncorrect: { backgroundColor: "#81B64C" },
+    buttonIncorrect: { backgroundColor: "#81B64C" }, 
+    
     bottomButtonText: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
     disabledButton: { backgroundColor: "#555", opacity: 0.5 },
     modalContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0, 0, 0, 0.7)", padding: 20 },
@@ -688,4 +779,12 @@ const styles = StyleSheet.create({
     modalStatRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#555" },
     modalStatLabel: { fontSize: 18, color: "#AAAAAA" },
     modalStatValue: { fontSize: 18, color: "#FFFFFF", fontWeight: "bold" },
+
+    // Audio Styles
+    audioRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 20, marginTop: 10, marginBottom: 20 },
+    speakerButton: { padding: 15, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 50 },
+    micButton: { padding: 15, backgroundColor: '#7B61FF', borderRadius: 50, shadowColor: "#7B61FF", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 5, elevation: 6 },
+    micButtonActive: { backgroundColor: '#D93025', transform: [{ scale: 1.1 }] },
+    micButtonCorrect: { backgroundColor: '#81B64C' },
+    micButtonIncorrect: { backgroundColor: '#D93025' }
 });
