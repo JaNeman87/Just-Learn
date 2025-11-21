@@ -39,7 +39,7 @@ const LEVEL_KEY = "@JustLearn:selectedLevel";
 const Test = () => {
     const route = useRoute();
     const navigation = useNavigation();
-    const { isPro } = useMembership();
+    const { isPro, updateProgress } = useMembership();
 
     const parsedTest = useMemo(() => {
         let rawData = route.params.test;
@@ -459,6 +459,16 @@ const Test = () => {
     };
 
     const handleCloseStatsModal = () => {
+        // --- NEW: Calculate XP ---
+        const COMPLETION_BONUS = 20;
+        const ACCURACY_BONUS = 5;
+        
+        // Example: 20 points + (5 * 8 correct) = 60 XP
+        const xpEarned = COMPLETION_BONUS + (correctAnswers * ACCURACY_BONUS);
+
+        // Send to Context (Updates Supabase & Local State)
+        updateProgress(xpEarned);
+        // -------------------------
         updateTestStats(parsedTest.id, correctAnswers);
         saveProgress(parsedTest.questions.length, correctAnswers, incorrectAnswers);
         setShowStatsModal(false);
@@ -523,6 +533,12 @@ const Test = () => {
                             <View style={styles.modalStatRow}><Text style={styles.modalStatLabel}>Correct:</Text><Text style={[styles.modalStatValue, { color: "#81B64C" }]}>{correctAnswers}</Text></View>
                             <View style={styles.modalStatRow}><Text style={styles.modalStatLabel}>Incorrect:</Text><Text style={[styles.modalStatValue, { color: "#D93025" }]}>{incorrectAnswers}</Text></View>
                             <View style={styles.modalStatRow}><Text style={styles.modalStatLabel}>Total:</Text><Text style={styles.modalStatValue}>{totalQuestions}</Text></View>
+                            <View style={styles.modalStatRow}>
+    <Text style={styles.modalStatLabel}>XP Earned:</Text>
+    <Text style={[styles.modalStatValue, { color: "#FFD700" }]}>
+        +{20 + (correctAnswers * 5)} XP
+    </Text>
+</View>
                         </View>
                         <View style={styles.modalButtonContainer}>
                             <TouchableOpacity style={styles.bottomButton} onPress={handleCloseStatsModal}><Text style={styles.bottomButtonText}>Continue</Text></TouchableOpacity>
