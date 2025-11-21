@@ -1,13 +1,13 @@
 
 
 import { Ionicons } from "@expo/vector-icons";
+import * as Speech from 'expo-speech';
 import { MotiView } from "moti";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, Vibration, View } from "react-native";
 import * as Animatable from "react-native-animatable";
 import { Layout } from "react-native-reanimated";
 
-// Imports for AI & Membership
 import { useMembership } from "../app/contexts/MembershipContext";
 import { getGrammarExplanation } from "../app/services/aiService";
 import ProModal from "./ProModal";
@@ -18,18 +18,17 @@ const shuffle = array => [...array].sort(() => Math.random() - 0.5);
 const SentenceBuilder = ({ question, onComplete, onMistake }) => {
     const { isPro } = useMembership();
 
-    // --- STATE ---
     const [initialWords, setInitialWords] = useState([]);
     const [availableWordIds, setAvailableWordIds] = useState([]);
     const [placedWords, setPlacedWords] = useState({});
     const [wrongWordId, setWrongWordId] = useState(null);
+    
+    const [isSentenceComplete, setIsSentenceComplete] = useState(false);
 
-    // AI Coach State
     const [showCoachButton, setShowCoachButton] = useState(false);
     const [lastErrorContext, setLastErrorContext] = useState(null);
     const [coachLoading, setCoachLoading] = useState(false);
 
-    // Modals
     const [proModalVisible, setProModalVisible] = useState(false);
     const [statusModalVisible, setStatusModalVisible] = useState(false);
     const [statusConfig, setStatusConfig] = useState({});
@@ -37,7 +36,6 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
     const wordRefs = useRef({});
     const wordMap = useRef(new Map());
 
-    // --- LOGIC ---
     useEffect(() => {
         const initialWordObjects = question.options.map((word, index) => ({
             id: `${word}-${index}`,
@@ -56,6 +54,7 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
         setPlacedWords({});
         setWrongWordId(null);
         setShowCoachButton(false);
+        setIsSentenceComplete(false);
     }, [question]);
 
     const handleWordPress = wordId => {
@@ -64,7 +63,6 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
         const expectedWord = question.correctSentence[nextWordIndex];
 
         if (wordObj.text === expectedWord) {
-            // Correct
             Vibration.vibrate(50);
             setAvailableWordIds(prev => prev.filter(id => id !== wordId));
             setPlacedWords(prev => ({ ...prev, [nextWordIndex]: wordObj }));
@@ -72,10 +70,10 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
             setShowCoachButton(false);
 
             if (nextWordIndex + 1 === question.correctSentence.length) {
+                setIsSentenceComplete(true);
                 setTimeout(() => onComplete(true), 500);
             }
         } else {
-            // Wrong
             Vibration.vibrate(400);
             if (onMistake) onMistake();
 
@@ -93,6 +91,12 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
             wordRefs.current[wordObj.id]?.shake(500);
             setTimeout(() => setWrongWordId(null), 800);
         }
+    };
+
+    const handleSpeakSentence = () => {
+        const fullSentence = question.correctSentence.join(" ");
+        Speech.stop();
+        Speech.speak(fullSentence, { language: 'de', rate: 0.9 });
     };
 
     const handleCoachPress = async () => {
@@ -123,11 +127,11 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
         setPlacedWords({});
         setAvailableWordIds(shuffle(initialWords).map(w => w.id));
         setShowCoachButton(false);
+        setIsSentenceComplete(false);
     };
 
     return (
         <View style={styles.container}>
-            {/* --- AI COACH BUTTON --- */}
             {showCoachButton && (
                 <Animatable.View animation="bounceIn" style={styles.coachContainer}>
                     <TouchableOpacity 
@@ -150,7 +154,6 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
             <Text style={styles.instruction}>{question.questionText}</Text>
             <Text style={styles.englishSentence}>"{question.englishText}"</Text>
 
-            {/* --- TOP AREA --- */}
             <TouchableOpacity onPress={resetSentence} style={styles.sentenceArea} activeOpacity={1}>
                 {question.correctSentence.map((word, index) => {
                     const placedWord = placedWords[index];
@@ -177,7 +180,6 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
                 })}
             </TouchableOpacity>
 
-            {/* --- BOTTOM AREA --- */}
             <View style={styles.poolArea}>
                 {initialWords.map(word => {
                     if (!availableWordIds.includes(word.id)) {
@@ -204,7 +206,15 @@ const SentenceBuilder = ({ question, onComplete, onMistake }) => {
                 })}
             </View>
 
-            {/* --- MODALS --- */}
+            {/* --- 5. MOVED AUDIO BUTTON HERE (Below clickable words) --- */}
+            {isSentenceComplete && (
+                <Animatable.View animation="fadeInUp" style={styles.audioButtonContainer}>
+                    <TouchableOpacity onPress={handleSpeakSentence} style={styles.speakerButton}>
+                        <Ionicons name="volume-high" size={24} color="#81B64C" />
+                    </TouchableOpacity>
+                </Animatable.View>
+            )}
+
             <ProModal 
                 visible={proModalVisible} 
                 onClose={() => setProModalVisible(false)} 
@@ -244,32 +254,35 @@ const styles = StyleSheet.create({
     },
     coachText: { color: "#FFF", fontWeight: "bold", fontSize: 14 },
 
+    // Updated Audio Styles to match Flashcard
+    audioButtonContainer: {
+        marginTop: 30,
+        marginBottom: 10,
+        alignItems: 'center',
+    },
+    speakerButton: {
+        padding: 15,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 50,
+    },
+
     instruction: { color: "#fff", fontSize: 16, marginBottom: 5, opacity: 0.8 },
     englishSentence: { color: "#fff", fontSize: 24, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
 
     sentenceArea: {
         width: "100%",
         minHeight: 100,
-        marginBottom: 30,
+        marginBottom: 10,
         flexDirection: "row",
         flexWrap: "wrap",
         justifyContent: "center",
-        // --- FIX 1: Align everything to the bottom of the line ---
-        alignItems: 'flex-end', 
+        alignItems: 'flex-end',
     },
     slotContainer: { alignItems: "center", marginHorizontal: 4, marginBottom: 12 },
-    
-    wordSlotEmpty: { 
-        // --- FIX 2: Fixed height (46px) ---
-        height: 46, 
-        width: 60, 
-        // Transparent as requested
-    },
+    wordSlotEmpty: { height: 46, width: 60 },
     
     wordChipPlaced: {
         backgroundColor: "#81B64C",
-        // --- FIX 3: Padding adjusted to match 46px height ---
-        // Text(24) + Pad(11+11) = 46px
         paddingVertical: 11, 
         paddingHorizontal: 16,
         borderRadius: 10,

@@ -2,32 +2,43 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
+import * as Speech from 'expo-speech';
 import { useEffect, useRef, useState } from "react";
-import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"; // 1. ScrollView is here
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Animatable from "react-native-animatable";
+import { useMembership } from "../contexts/MembershipContext";
 
 // Helper to shuffle array
 const shuffle = array => [...array].sort(() => Math.random() - 0.5);
-const { width } = Dimensions.get("window");
-
 const BOOKMARKS_KEY = "@JustLearnBookmarks";
 
 const FlashcardScreen = () => {
-    const route = useRoute();
     const navigation = useNavigation();
+    const route = useRoute();
     const { questions } = route.params;
+    const { isPro } = useMembership();
 
     const [studyDeck, setStudyDeck] = useState([]);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
     const [isBookmarked, setIsBookmarked] = useState(false);
+    const [flipAnim] = useState(new Animated.Value(0));
 
     const buttonsRef = useRef(null);
 
     const currentCard = studyDeck.length > 0 && currentIndex < studyDeck.length ? studyDeck[currentIndex] : null;
 
-    // --- All useEffects and Handlers are unchanged ---
+    // Helper to Speak
+    const speak = (text, language = 'de') => {
+        Speech.stop();
+        Speech.speak(text, {
+            language: language,
+            pitch: 1.0,
+            rate: 0.9, 
+        });
+    };
+
     useEffect(() => {
         if (!questions) {
             navigation.goBack();
@@ -82,33 +93,90 @@ const FlashcardScreen = () => {
         }
     };
 
-    const handleFlip = () => {
-        if (isAnimating) return;
-        setIsAnimating(true);
-        if (isFlipped && buttonsRef.current) {
-            buttonsRef.current.fadeOutDown(200);
+    const flipCard = () => {
+        if (isFlipped) {
+            // Flip Back to Front
+            Animated.spring(flipAnim, {
+                toValue: 0,
+                friction: 8,
+                tension: 10,
+                useNativeDriver: true,
+            }).start();
+        } else {
+            // Flip Front to Back
+            Animated.spring(flipAnim, {
+                toValue: 180,
+                friction: 8,
+                tension: 10,
+                useNativeDriver: true,
+            }).start();
+            
+            // --- AUTO-SPEAK REMOVED (As requested) ---
+            // It will only speak when you press the button now.
         }
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setIsFlipped(!isFlipped);
-        setTimeout(() => setIsAnimating(false), 300);
+    };
+
+    // --- NEW: Smart Speak Handler ---
+    const handleSpeakBack = (e) => {
+        e.stopPropagation(); 
+        
+        if (currentCard.type === 'sentence') {
+            const germanSentence = currentCard.correctSentence.join(" ");
+            speak(germanSentence);
+        } else {
+            // Standard Card
+            const correctAnswer = currentCard.options[currentCard.correctAnswerIndex];
+            let textToSpeak = currentCard.questionText;
+
+            // FIX: Replace underscores with the actual answer so it speaks a full sentence
+            if (textToSpeak.includes("___")) {
+                textToSpeak = textToSpeak.replace(/_+/g, correctAnswer);
+            }
+            
+            speak(textToSpeak);
+        }
     };
 
     const handleAnswer = knewIt => {
         if (isAnimating) return;
         setIsAnimating(true);
         const currentCard = studyDeck[currentIndex];
-        buttonsRef.current.fadeOutDown(200).then(() => {
-            setIsFlipped(false);
-            if (!knewIt) {
-                setStudyDeck(prev => [...prev, currentCard]);
-            }
-            setCurrentIndex(prev => prev + 1);
-        });
+        if (buttonsRef.current) {
+            buttonsRef.current.fadeOutDown(200).then(() => {
+                setIsFlipped(false);
+                flipAnim.setValue(0);
+                
+                if (!knewIt) {
+                    setStudyDeck(prev => [...prev, currentCard]);
+                }
+                setCurrentIndex(prev => prev + 1);
+            });
+        } else {
+             setIsFlipped(false);
+             flipAnim.setValue(0);
+             if (!knewIt) setStudyDeck(prev => [...prev, currentCard]);
+             setCurrentIndex(prev => prev + 1);
+        }
     };
 
-    // --- Render Logic ---
+    const frontInterpolate = flipAnim.interpolate({
+        inputRange: [0, 180],
+        outputRange: ["0deg", "180deg"],
+    });
+    const backInterpolate = flipAnim.interpolate({
+        inputRange: [0, 180],
+        outputRange: ["180deg", "360deg"],
+    });
+    const frontOpacity = flipAnim.interpolate({
+        inputRange: [89, 90],
+        outputRange: [1, 0],
+    });
+    const backOpacity = flipAnim.interpolate({
+        inputRange: [89, 90],
+        outputRange: [0, 1],
+    });
 
-    // 1. Show "Complete" screen
     if (!currentCard || currentIndex >= studyDeck.length) {
         return (
             <View style={styles.container}>
@@ -126,7 +194,6 @@ const FlashcardScreen = () => {
         );
     }
 
-    // 2. Prepare card data (unchanged)
     let correctAnswerText = "";
     let questionText = currentCard.questionText || "";
     const isFillInTheBlank = questionText.includes("___");
@@ -148,13 +215,11 @@ const FlashcardScreen = () => {
     const currentCardNumber = currentIndex + 1;
     const progressPercent = (currentCardNumber / totalCards) * 100;
 
-    // 3. Render the Flashcard UI
     return (
         <View style={styles.container}>
-            {/* Scrollable content area */}
             <ScrollView
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.scrollContent} // <-- 2. ADDED PADDING HERE
+                contentContainerStyle={styles.scrollContent}
             >
                 <View style={styles.bookmarkContainer}>
                     <TouchableOpacity onPress={handleBookmarkToggle} style={styles.bookmarkButton}>
@@ -175,86 +240,104 @@ const FlashcardScreen = () => {
                     </View>
                 </View>
 
-                <Animatable.View
-                    style={{ width: "100%" }}
-                    key={currentIndex}
-                    animation="fadeIn"
-                    duration={300}
-                    useNativeDriver={true}
-                >
-                    <TouchableOpacity style={styles.card} activeOpacity={1} onPress={handleFlip} disabled={isAnimating}>
-                        {!isFlipped ? (
-                            // --- CARD FRONT ---
-                            <Animatable.View key="front" animation="flipInY" duration={300} style={styles.cardFace}>
-                                {/* 3. REMOVED outer ScrollView */}
-                                {currentCard.type === "sentence" ? (
+                <View style={{ width: "100%", minHeight: 400 }}>
+                    <TouchableOpacity activeOpacity={1} onPress={flipCard} style={styles.touchableArea}>
+                        {/* --- FRONT SIDE --- */}
+                        <Animated.View
+                            style={[
+                                styles.card,
+                                styles.cardFront,
+                                { transform: [{ rotateY: frontInterpolate }], opacity: frontOpacity },
+                            ]}
+                        >
+                            {currentCard.type === "sentence" ? (
+                                <View style={styles.questionContainer}>
+                                    <Text style={styles.questionText}>(Translate this sentence)</Text>
+                                    <Text style={styles.englishSentence}>"{currentCard.englishText}"</Text>
+                                </View>
+                            ) : (
+                                <>
                                     <View style={styles.questionContainer}>
-                                        <Text style={styles.questionText}>(Translate this sentence)</Text>
-                                        <Text style={styles.englishSentence}>"{currentCard.englishText}"</Text>
+                                        <Text style={styles.questionText}>{currentCard.questionText}</Text>
                                     </View>
-                                ) : (
-                                    <>
-                                        <View style={styles.questionContainer}>
+                                    {/* Front Speaker REMOVED */}
+
+                                    <View style={styles.optionsContainer}>
+                                        {currentCard.options && currentCard.options.map((option, index) => (
+                                            <View key={index} style={styles.optionButton}>
+                                                <Text style={styles.optionText}>{option}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                </>
+                            )}
+                            <Text style={styles.cardHint}>(Tap to flip)</Text>
+                        </Animated.View>
+
+                        {/* --- BACK SIDE --- */}
+                        <Animated.View
+                            style={[
+                                styles.card,
+                                styles.cardBack,
+                                { transform: [{ rotateY: backInterpolate }], opacity: backOpacity },
+                            ]}
+                        >
+                            {currentCard.type === "sentence" ? (
+                                <View style={styles.questionContainer}>
+                                    <Text style={styles.cardTextBack}>{correctAnswerText}</Text>
+                                    {/* Speaker for Sentence Back */}
+                                    <TouchableOpacity 
+                                        style={styles.speakerButton} 
+                                        onPress={handleSpeakBack}
+                                    >
+                                        <Ionicons name="volume-high" size={24} color="#81B64C" />
+                                    </TouchableOpacity>
+                                </View>
+                            ) : (
+                                <>
+                                    <View style={styles.questionContainer}>
+                                        {isFillInTheBlank ? (
+                                            <Text style={styles.questionText}>
+                                                {questionPart1}
+                                                <Text style={styles.filledCorrectText}>{correctAnswerText}</Text>
+                                                {questionPart2}
+                                            </Text>
+                                        ) : (
                                             <Text style={styles.questionText}>{currentCard.questionText}</Text>
-                                        </View>
-                                        <View style={styles.optionsContainer}>
-                                            {currentCard.options.map((option, index) => (
-                                                <View key={index} style={styles.optionButton}>
-                                                    <Text style={styles.optionText}>{option}</Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    </>
-                                )}
-                                <Text style={styles.cardHint}>(Tap to flip)</Text>
-                            </Animatable.View>
-                        ) : (
-                            // --- CARD BACK ---
-                            <Animatable.View key="back" animation="flipInY" duration={300} style={styles.cardFace}>
-                                {/* 3. REMOVED outer ScrollView */}
-                                {currentCard.type === "sentence" ? (
-                                    <View style={styles.questionContainer}>
-                                        <Text style={styles.cardTextBack}>{correctAnswerText}</Text>
+                                        )}
                                     </View>
-                                ) : (
-                                    <>
-                                        <View style={styles.questionContainer}>
-                                            {isFillInTheBlank ? (
-                                                <Text style={styles.questionText}>
-                                                    {questionPart1}
-                                                    <Text style={styles.filledCorrectText}>{correctAnswerText}</Text>
-                                                    {questionPart2}
-                                                </Text>
-                                            ) : (
-                                                <Text style={styles.questionText}>{currentCard.questionText}</Text>
-                                            )}
-                                        </View>
-                                        <View style={styles.optionsContainer}>
-                                            {currentCard.options.map((option, index) => (
-                                                <View
-                                                    key={index}
-                                                    style={
-                                                        index === currentCard.correctAnswerIndex
-                                                            ? styles.correctOption
-                                                            : styles.disabledOption
-                                                    }
-                                                >
-                                                    <Text style={styles.optionText}>{option}</Text>
-                                                </View>
-                                            ))}
-                                        </View>
-                                    </>
-                                )}
-                                <Text style={styles.cardHint}>(Tap to flip)</Text>
-                            </Animatable.View>
-                        )}
+                                    {/* Speaker for Standard Back with Smart Replacement */}
+                                    <TouchableOpacity 
+                                        style={styles.speakerButton} 
+                                        onPress={handleSpeakBack}
+                                    >
+                                        <Ionicons name="volume-high" size={24} color="#81B64C" />
+                                    </TouchableOpacity>
+
+                                    <View style={styles.optionsContainer}>
+                                        {currentCard.options && currentCard.options.map((option, index) => (
+                                            <View
+                                                key={index}
+                                                style={
+                                                    index === currentCard.correctAnswerIndex
+                                                        ? styles.correctOption
+                                                        : styles.disabledOption
+                                                }
+                                            >
+                                                <Text style={styles.optionText}>{option}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                </>
+                            )}
+                            <Text style={styles.cardHint}>(Tap to flip)</Text>
+                        </Animated.View>
                     </TouchableOpacity>
-                </Animatable.View>
+                </View>
             </ScrollView>
 
-            {/* Action Buttons */}
             {isFlipped && (
-                <Animatable.View ref={buttonsRef} animation="fadeInUp" duration={500} style={styles.buttonContainer}>
+                <Animatable.View ref={buttonsRef} animation="fadeInUp" duration={300} style={styles.buttonContainer}>
                     <TouchableOpacity
                         style={[styles.actionButton, styles.unknownButton]}
                         onPress={() => handleAnswer(false)}
@@ -277,19 +360,16 @@ const FlashcardScreen = () => {
     );
 };
 
-// --- Styles ---
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#2C2B29",
-        // 4. UPDATED: This controls the layout
         justifyContent: "space-between",
-        paddingTop: 60, // Space for the status bar
+        paddingTop: 60,
     },
-    // 5. NEW: ScrollView content styles
     scrollContent: {
         paddingHorizontal: 20,
-        paddingBottom: 20, // Space between card and buttons
+        paddingBottom: 20,
     },
     bookmarkContainer: {
         width: "100%",
@@ -301,8 +381,6 @@ const styles = StyleSheet.create({
     },
     progressContainer: {
         width: "100%",
-        // 6. REMOVED position: 'absolute'
-        // REMOVED top: 100
         marginBottom: 20,
     },
     progressText: {
@@ -323,6 +401,10 @@ const styles = StyleSheet.create({
         backgroundColor: "#81B64C",
         borderRadius: 5,
     },
+    touchableArea: {
+        width: '100%',
+        minHeight: 400,
+    },
     card: {
         width: "100%",
         minHeight: 400,
@@ -337,18 +419,26 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.25,
         shadowRadius: 3.84,
         elevation: 5,
-        // 7. REMOVED marginTop
     },
-    cardFace: {
-        width: "100%",
-        backfaceVisibility: "hidden",
-        alignItems: "center",
+    cardFront: {
+        position: 'absolute',
+        top: 0,
+    },
+    cardBack: {
+        position: 'absolute',
+        top: 0,
     },
     cardHint: {
         color: "#AAAAAA",
         fontSize: 14,
         fontStyle: "italic",
         marginTop: 20,
+    },
+    speakerButton: {
+        marginVertical: 15,
+        padding: 12,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 50,
     },
     questionContainer: {
         width: "100%",
@@ -358,7 +448,6 @@ const styles = StyleSheet.create({
         backgroundColor: "transparent",
         borderRadius: 10,
         alignItems: "center",
-        marginBottom: 40,
     },
     questionText: {
         fontSize: 22,
@@ -380,34 +469,35 @@ const styles = StyleSheet.create({
     },
     optionsContainer: {
         width: "100%",
+        marginTop: 10,
     },
     optionButton: {
         backgroundColor: "transparent",
-        padding: 20,
+        padding: 15,
         borderRadius: 8,
         width: "100%",
-        marginBottom: 15,
-        borderWidth: 2,
+        marginBottom: 10,
+        borderWidth: 1,
         borderColor: "#555",
     },
     correctOption: {
         backgroundColor: "#81B64C",
-        padding: 20,
+        padding: 15,
         borderRadius: 8,
         width: "100%",
-        marginBottom: 15,
-        borderWidth: 2,
+        marginBottom: 10,
+        borderWidth: 1,
         borderColor: "#81B64C",
     },
     disabledOption: {
         backgroundColor: "transparent",
-        padding: 20,
+        padding: 15,
         borderRadius: 8,
         width: "100%",
-        marginBottom: 15,
-        borderWidth: 2,
+        marginBottom: 10,
+        borderWidth: 1,
         borderColor: "#555",
-        opacity: 0.6,
+        opacity: 0.5,
     },
     optionText: {
         color: "#FFFFFF",
@@ -420,16 +510,14 @@ const styles = StyleSheet.create({
         fontSize: 26,
         fontWeight: "bold",
         textAlign: "center",
-        padding: 20,
+        padding: 10,
     },
-    // Button styles
     buttonContainer: {
         flexDirection: "row",
         justifyContent: "space-around",
         width: "100%",
-        // 8. UPDATED: No longer 'absolute'
         paddingHorizontal: 20,
-        paddingBottom: 40, // Space from bottom
+        paddingBottom: 40,
     },
     actionButton: {
         flexDirection: "row",
@@ -450,7 +538,6 @@ const styles = StyleSheet.create({
         fontWeight: "bold",
         marginLeft: 10,
     },
-    // Complete Screen
     completeContainer: {
         flex: 1,
         justifyContent: "center",
