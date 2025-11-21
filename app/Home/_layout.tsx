@@ -46,6 +46,14 @@ export default function HomeStackLayout() {
                 name="profile"
                 options={{
                     title: "profile",
+                     presentation: "formSheet",
+                    gestureDirection: "vertical",
+                    animation: "slide_from_bottom",
+                    sheetGrabberVisible: true,
+                    sheetAllowedDetents: [0.5,1],
+                    sheetCornerRadius: 20,
+                    sheetExpandsWhenScrolledToEdge: true,
+                    sheetElevation: 24,
                 }}
             />
 

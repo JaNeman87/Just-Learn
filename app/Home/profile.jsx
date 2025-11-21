@@ -363,7 +363,7 @@ export default function Profile() {
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.userInfoSection}>
                     <View style={styles.avatarContainer}>
-                        <Ionicons name="person-circle-outline" size={80} color="#FFFFFF" />
+                        <Ionicons name="person-circle-outline" size={80} color="#81B64C" />
                         {isPro && (
                             <View style={styles.proBadge}>
                                 <Ionicons name="star" size={12} color="#FFF" />

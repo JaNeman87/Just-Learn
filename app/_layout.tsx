@@ -18,7 +18,7 @@ const StreakBadge = () => {
 
     return (
         <View style={styles.streakContainer}>
-            <Ionicons name="flame" size={22} color={streak > 0 ? "#81B64C" : "#555"} />
+            <Ionicons name="flame" size={22} color={streak > 0 ? "#FFD700" : "#555"} />
             <Text style={[styles.streakText, streak > 0 && styles.streakTextActive]}>
                 {streak}
             </Text>
