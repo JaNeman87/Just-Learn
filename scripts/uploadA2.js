@@ -397,6 +397,19 @@ const A2 = {
                     correctSentence: ["Meine", "Freunde", "sind", "ins", "Kino", "gegangen"],
                     options: ["Meine", "Freunde", "haben", "sind", "ins", "im", "Kino", "gegangen", "gehen"],
                 },
+                {
+                    id: "A2-T1-Q41",
+                    type: "chat",
+                    questionText: "Complete the chat",
+                    dialogue: [
+                        { speaker: "friend", text: "Hallo! Hast du am Wochenende Zeit?" },
+                        { speaker: "me", text: "Ja, ich habe Zeit. ___?", isTarget: true }, // Target has blank
+                    ],
+                    options: ["Warum", "Wer", "Wann"],
+                    correctAnswerIndex: 0, // "Warum" (Why?) -> implies "Why do you ask?"
+                    // Full sentence logic for AI explanation context:
+                    translation: "Yes, I have time. Why?",
+                },
             ],
         },
         {

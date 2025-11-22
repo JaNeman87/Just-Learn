@@ -19,12 +19,13 @@ import * as Animatable from "react-native-animatable";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 // Components
+import ChatCompletion from "../../components/ChatCompletion";
+import ListeningSentenceBuilder from "../../components/ListeningSentenceBuilder";
 import MatchingQuestion from "../../components/MatchingQuestion";
 import MultipleChoiceQuestion from "../../components/MultipleChoiceQuestion"; // NEW IMPORT
 import SentenceBuilder from "../../components/SentenceBuilder";
 
 import DownloadButton from "../../components/DownloadButton";
-import ListeningSentenceBuilder from "../../components/ListeningSentenceBuilder";
 import ProModal from "../../components/ProModal";
 import StatusModal from "../../components/StatusModal";
 import { useMembership } from "../contexts/MembershipContext";
@@ -223,6 +224,10 @@ const Test = () => {
             }
         }
         setProcessingSpeech(false);
+    };
+
+    const handleChatOptionSelect = index => {
+        handleOptionPress(index);
     };
 
     const handleInteractiveMistake = () => {
@@ -646,6 +651,14 @@ const Test = () => {
                         question={currentQuestion}
                         onComplete={handleInteractiveDone}
                         onMistake={handleInteractiveMistake}
+                    />
+                ) : currentQuestion.type === "chat" ? ( // <--- NEW TYPE
+                    <ChatCompletion
+                        question={currentQuestion}
+                        onOptionSelected={handleChatOptionSelect}
+                        showResult={showResult}
+                        isCorrect={isCorrect}
+                        selectedOptionIndex={selectedAnswerIndex}
                     />
                 ) : (
                     // Used new MultipleChoiceQuestion component here
