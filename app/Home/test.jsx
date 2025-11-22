@@ -477,10 +477,9 @@ const Test = () => {
 
     const handleCloseStatsModal = () => {
         // --- NEW: Calculate XP ---
-        const COMPLETION_BONUS = 20;
-        const ACCURACY_BONUS = 5;
+        const COMPLETION_BONUS = 10;
+        const ACCURACY_BONUS = 1;
 
-        // Example: 20 points + (5 * 8 correct) = 60 XP
         const xpEarned = COMPLETION_BONUS + correctAnswers * ACCURACY_BONUS;
 
         // Send to Context (Updates Supabase & Local State)
