@@ -316,6 +316,87 @@ const A2 = {
                     correctSentence: ["Sie", "ist", "zu", "Hause", "geblieben", "weil", "sie", "krank", "war"],
                     options: ["Hause", "krank", "geblieben", "Sie", "weil", "zu", "war", "ist", "sie", "denn"],
                 },
+                // --- 10 Listening Questions (New Type) ---
+                {
+                    id: "A2-T1-Q31",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Ich bin heute früh aufgestanden." (I got up early today.)
+                    correctSentence: ["Ich", "bin", "heute", "früh", "aufgestanden"],
+                    options: ["Ich", "habe", "bin", "heute", "morgen", "früh", "aufgestanden", "aufstehen"],
+                },
+                {
+                    id: "A2-T1-Q32",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Wir haben am Wochenende Fußball gespielt." (We played soccer on the weekend.)
+                    correctSentence: ["Wir", "haben", "am", "Wochenende", "Fußball", "gespielt"],
+                    options: ["Wir", "sind", "haben", "am", "Wochenende", "Fußball", "gespielt", "spielen", "Tennis"],
+                },
+                {
+                    id: "A2-T1-Q33",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Er ist gestern nach München gefahren." (He drove to Munich yesterday.)
+                    correctSentence: ["Er", "ist", "gestern", "nach", "München", "gefahren"],
+                    options: ["Er", "hat", "ist", "gestern", "morgen", "nach", "München", "gefahren", "fahren"],
+                },
+                {
+                    id: "A2-T1-Q34",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Hast du schon gefrühstückt?" (Have you eaten breakfast already?)
+                    correctSentence: ["Hast", "du", "schon", "gefrühstückt"],
+                    options: ["Hast", "Bist", "du", "schon", "heute", "gefrühstückt", "frühstücken", "gegessen"],
+                },
+                {
+                    id: "A2-T1-Q35",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Sie hat ein neues Buch gelesen." (She read a new book.)
+                    correctSentence: ["Sie", "hat", "ein", "neues", "Buch", "gelesen"],
+                    options: ["Sie", "ist", "hat", "ein", "neues", "Buch", "gelesen", "gelest", "sieht"],
+                },
+                {
+                    id: "A2-T1-Q36",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Wir sind im Park spazieren gegangen." (We went for a walk in the park.)
+                    correctSentence: ["Wir", "sind", "im", "Park", "spazieren", "gegangen"],
+                    options: ["Wir", "haben", "sind", "im", "Park", "Wald", "spazieren", "gegangen", "gingen"],
+                },
+                {
+                    id: "A2-T1-Q37",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Ich habe meine Hausaufgaben gemacht." (I did my homework.)
+                    correctSentence: ["Ich", "habe", "meine", "Hausaufgaben", "gemacht"],
+                    options: ["Ich", "bin", "habe", "meine", "deine", "Hausaufgaben", "gemacht", "gemachen"],
+                },
+                {
+                    id: "A2-T1-Q38",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Bist du gestern Abend zu Hause geblieben?" (Did you stay home last night?)
+                    correctSentence: ["Bist", "du", "gestern", "Abend", "zu", "Hause", "geblieben"],
+                    options: ["Bist", "Hast", "du", "gestern", "Abend", "zu", "Hause", "geblieben", "bleiben"],
+                },
+                {
+                    id: "A2-T1-Q39",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Er hat eine E-Mail geschrieben." (He wrote an email.)
+                    correctSentence: ["Er", "hat", "eine", "E-Mail", "geschrieben"],
+                    options: ["Er", "ist", "hat", "eine", "E-Mail", "Brief", "geschrieben", "schreiben"],
+                },
+                {
+                    id: "A2-T1-Q40",
+                    type: "listening_sentence",
+                    questionText: "Listen and arrange the words:",
+                    // Sentence: "Meine Freunde sind ins Kino gegangen." (My friends went to the cinema.)
+                    correctSentence: ["Meine", "Freunde", "sind", "ins", "Kino", "gegangen"],
+                    options: ["Meine", "Freunde", "haben", "sind", "ins", "im", "Kino", "gegangen", "gehen"],
+                },
             ],
         },
         {

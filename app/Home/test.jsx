@@ -1,11 +1,9 @@
-
-
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { Audio } from 'expo-av';
+import { Audio } from "expo-av";
 import * as Haptics from "expo-haptics";
-import * as Speech from 'expo-speech';
+import * as Speech from "expo-speech";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -26,6 +24,7 @@ import MultipleChoiceQuestion from "../../components/MultipleChoiceQuestion"; //
 import SentenceBuilder from "../../components/SentenceBuilder";
 
 import DownloadButton from "../../components/DownloadButton";
+import ListeningSentenceBuilder from "../../components/ListeningSentenceBuilder";
 import ProModal from "../../components/ProModal";
 import StatusModal from "../../components/StatusModal";
 import { useMembership } from "../contexts/MembershipContext";
@@ -102,7 +101,7 @@ const Test = () => {
     useEffect(() => {
         (async () => {
             const { status } = await Audio.requestPermissionsAsync();
-            if (status === 'granted') {
+            if (status === "granted") {
                 await Audio.setAudioModeAsync({
                     allowsRecordingIOS: true,
                     playsInSilentModeIOS: true,
@@ -113,16 +112,16 @@ const Test = () => {
 
     useEffect(() => {
         const loadLevelId = async () => {
-            const savedLevel = await AsyncStorage.getItem(LEVEL_KEY) || "A1";
+            const savedLevel = (await AsyncStorage.getItem(LEVEL_KEY)) || "A1";
             setCurrentLevelId(savedLevel);
         };
         loadLevelId();
     }, []);
 
     // --- SPEECH FUNCTIONS ---
-    const speak = (text) => {
+    const speak = text => {
         Speech.stop();
-        Speech.speak(text, { language: 'de', pitch: 1.0, rate: 0.9 });
+        Speech.speak(text, { language: "de", pitch: 1.0, rate: 0.9 });
     };
 
     const handleSpeakQuestion = () => {
@@ -153,20 +152,22 @@ const Test = () => {
 
         try {
             if (recordingRef.current) {
-                try { await recordingRef.current.stopAndUnloadAsync(); } catch (e) {}
+                try {
+                    await recordingRef.current.stopAndUnloadAsync();
+                } catch (e) {}
                 recordingRef.current = null;
             }
-            const { recording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
-            );
+            const { recording } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
             if (!isRecordingDesired.current) {
-                try { await recording.stopAndUnloadAsync(); } catch (e) {}
+                try {
+                    await recording.stopAndUnloadAsync();
+                } catch (e) {}
                 setIsRecording(false);
                 return;
             }
             recordingRef.current = recording;
         } catch (err) {
-            console.error('Failed to start recording', err);
+            console.error("Failed to start recording", err);
             setIsRecording(false);
         }
     };
@@ -186,22 +187,33 @@ const Test = () => {
             const spokenText = await transcribeAudio(uri);
 
             if (spokenText) {
-                const cleanSpoken = spokenText.toLowerCase().replace(/[.,!?]/g, "").trim();
-                
+                const cleanSpoken = spokenText
+                    .toLowerCase()
+                    .replace(/[.,!?]/g, "")
+                    .trim();
+
                 let targetText = currentQuestion.questionText;
                 if (targetText.includes("___")) {
                     const answer = currentQuestion.options[currentQuestion.correctAnswerIndex];
                     targetText = targetText.replace(/_+/g, answer);
                 }
-                const cleanTarget = targetText.toLowerCase().replace(/[.,!?]/g, "").trim();
+                const cleanTarget = targetText
+                    .toLowerCase()
+                    .replace(/[.,!?]/g, "")
+                    .trim();
 
                 if (cleanSpoken.includes(cleanTarget) || cleanTarget.includes(cleanSpoken)) {
-                    setSpeechResult('correct');
+                    setSpeechResult("correct");
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 } else {
-                    setSpeechResult('incorrect');
+                    setSpeechResult("incorrect");
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                    setStatusConfig({ type: 'error', title: 'Try Again', message: `You said: "${spokenText}"`, confirmText: 'OK' });
+                    setStatusConfig({
+                        type: "error",
+                        title: "Try Again",
+                        message: `You said: "${spokenText}"`,
+                        confirmText: "OK",
+                    });
                     setStatusModalVisible(true);
                 }
             }
@@ -347,7 +359,7 @@ const Test = () => {
     useLayoutEffect(() => {
         navigation.setOptions({
             headerRight: () => (
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
                     {currentLevelId && (
                         <View style={{ marginRight: 5 }}>
                             <DownloadButton levelId={currentLevelId} />
@@ -372,7 +384,7 @@ const Test = () => {
         const correct = selectedAnswerIndex === currentQuestion.correctAnswerIndex;
         setIsCorrect(correct);
         setShowResult(true);
-        
+
         if (correct) {
             setCorrectAnswers(prev => prev + 1);
             setAiContext(null);
@@ -382,10 +394,10 @@ const Test = () => {
                 question: currentQuestion.questionText,
                 userAnswer: currentQuestion.options[selectedAnswerIndex],
                 correctAnswer: currentQuestion.options[currentQuestion.correctAnswerIndex],
-                fullSentence: currentQuestion.questionText
+                fullSentence: currentQuestion.questionText,
             });
         }
-        
+
         updateQuestionStats(currentQuestion.id, correct);
         const selectedRef = optionRefs.current[selectedAnswerIndex];
         if (selectedRef) {
@@ -407,7 +419,7 @@ const Test = () => {
 
         setCoachLoading(true);
         const explanation = await getGrammarExplanation(
-            "", 
+            "",
             aiContext.userAnswer,
             aiContext.correctAnswer,
             aiContext.fullSentence
@@ -462,9 +474,9 @@ const Test = () => {
         // --- NEW: Calculate XP ---
         const COMPLETION_BONUS = 20;
         const ACCURACY_BONUS = 5;
-        
+
         // Example: 20 points + (5 * 8 correct) = 60 XP
-        const xpEarned = COMPLETION_BONUS + (correctAnswers * ACCURACY_BONUS);
+        const xpEarned = COMPLETION_BONUS + correctAnswers * ACCURACY_BONUS;
 
         // Send to Context (Updates Supabase & Local State)
         updateProgress(xpEarned);
@@ -511,13 +523,21 @@ const Test = () => {
                     <View style={styles.modalContent}>
                         <View style={styles.modalStatsContent}>
                             <Text style={styles.modalTitle}>Resume Test?</Text>
-                            <Text style={styles.modalSubText}>You left off on question {savedProgress?.index + 1}.</Text>
+                            <Text style={styles.modalSubText}>
+                                You left off on question {savedProgress?.index + 1}.
+                            </Text>
                         </View>
                         <View style={styles.modalButtonContainerRow}>
-                            <TouchableOpacity style={[styles.bottomButton, styles.modalButton, styles.buttonStartOver]} onPress={handleStartOver}>
+                            <TouchableOpacity
+                                style={[styles.bottomButton, styles.modalButton, styles.buttonStartOver]}
+                                onPress={handleStartOver}
+                            >
                                 <Text style={[styles.bottomButtonText, styles.buttonStartOverText]}>Start Over</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={[styles.bottomButton, styles.modalButton]} onPress={handleContinue}>
+                            <TouchableOpacity
+                                style={[styles.bottomButton, styles.modalButton]}
+                                onPress={handleContinue}
+                            >
                                 <Text style={styles.bottomButtonText}>Continue</Text>
                             </TouchableOpacity>
                         </View>
@@ -525,23 +545,39 @@ const Test = () => {
                 </View>
             </Modal>
 
-            <Modal animationType="slide" transparent={true} visible={showStatsModal} onRequestClose={handleCloseStatsModal}>
+            <Modal
+                animationType="slide"
+                transparent={true}
+                visible={showStatsModal}
+                onRequestClose={handleCloseStatsModal}
+            >
                 <View style={styles.modalContainer}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalStatsContent}>
                             <Text style={styles.modalTitle}>Test Statistics</Text>
-                            <View style={styles.modalStatRow}><Text style={styles.modalStatLabel}>Correct:</Text><Text style={[styles.modalStatValue, { color: "#81B64C" }]}>{correctAnswers}</Text></View>
-                            <View style={styles.modalStatRow}><Text style={styles.modalStatLabel}>Incorrect:</Text><Text style={[styles.modalStatValue, { color: "#D93025" }]}>{incorrectAnswers}</Text></View>
-                            <View style={styles.modalStatRow}><Text style={styles.modalStatLabel}>Total:</Text><Text style={styles.modalStatValue}>{totalQuestions}</Text></View>
                             <View style={styles.modalStatRow}>
-    <Text style={styles.modalStatLabel}>XP Earned:</Text>
-    <Text style={[styles.modalStatValue, { color: "#FFD700" }]}>
-        +{20 + (correctAnswers * 5)} XP
-    </Text>
-</View>
+                                <Text style={styles.modalStatLabel}>Correct:</Text>
+                                <Text style={[styles.modalStatValue, { color: "#81B64C" }]}>{correctAnswers}</Text>
+                            </View>
+                            <View style={styles.modalStatRow}>
+                                <Text style={styles.modalStatLabel}>Incorrect:</Text>
+                                <Text style={[styles.modalStatValue, { color: "#D93025" }]}>{incorrectAnswers}</Text>
+                            </View>
+                            <View style={styles.modalStatRow}>
+                                <Text style={styles.modalStatLabel}>Total:</Text>
+                                <Text style={styles.modalStatValue}>{totalQuestions}</Text>
+                            </View>
+                            <View style={styles.modalStatRow}>
+                                <Text style={styles.modalStatLabel}>XP Earned:</Text>
+                                <Text style={[styles.modalStatValue, { color: "#FFD700" }]}>
+                                    +{20 + correctAnswers * 5} XP
+                                </Text>
+                            </View>
                         </View>
                         <View style={styles.modalButtonContainer}>
-                            <TouchableOpacity style={styles.bottomButton} onPress={handleCloseStatsModal}><Text style={styles.bottomButtonText}>Continue</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.bottomButton} onPress={handleCloseStatsModal}>
+                                <Text style={styles.bottomButtonText}>Continue</Text>
+                            </TouchableOpacity>
                         </View>
                     </View>
                 </View>
@@ -563,25 +599,28 @@ const Test = () => {
                 </View>
 
                 <View style={styles.progressContainer}>
-                    <Text style={styles.progressText}>Question {currentQuestionNumber} / {totalQuestions}</Text>
+                    <Text style={styles.progressText}>
+                        Question {currentQuestionNumber} / {totalQuestions}
+                    </Text>
                     <View style={styles.progressBarTrack}>
                         <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
                     </View>
                 </View>
-                
+
                 {/* AI COACH BUTTON */}
                 {showResult && !isCorrect && aiContext && (
                     <Animatable.View animation="bounceIn" style={styles.coachContainer}>
-                        <TouchableOpacity 
-                            style={styles.coachButton} 
-                            onPress={handleAiExplain}
-                            disabled={coachLoading}
-                        >
+                        <TouchableOpacity style={styles.coachButton} onPress={handleAiExplain} disabled={coachLoading}>
                             {coachLoading ? (
                                 <ActivityIndicator size="small" color="#FFF" />
                             ) : (
                                 <>
-                                    <Ionicons name={isPro ? "bulb" : "lock-closed"} size={20} color="#FFF" style={{ marginRight: 5 }} />
+                                    <Ionicons
+                                        name={isPro ? "bulb" : "lock-closed"}
+                                        size={20}
+                                        color="#FFF"
+                                        style={{ marginRight: 5 }}
+                                    />
                                     <Text style={styles.coachText}>Why is this wrong?</Text>
                                 </>
                             )}
@@ -591,20 +630,26 @@ const Test = () => {
 
                 {/* --- QUESTION RENDERING LOGIC --- */}
                 {currentQuestion.type === "matching" ? (
-                    <MatchingQuestion 
-                        question={currentQuestion} 
-                        onComplete={handleInteractiveDone} 
-                        onMistake={handleInteractiveMistake} 
+                    <MatchingQuestion
+                        question={currentQuestion}
+                        onComplete={handleInteractiveDone}
+                        onMistake={handleInteractiveMistake}
                     />
                 ) : currentQuestion.type === "sentence" ? (
-                    <SentenceBuilder 
-                        question={currentQuestion} 
-                        onComplete={handleInteractiveDone} 
-                        onMistake={handleInteractiveMistake} 
+                    <SentenceBuilder
+                        question={currentQuestion}
+                        onComplete={handleInteractiveDone}
+                        onMistake={handleInteractiveMistake}
+                    />
+                ) : currentQuestion.type === "listening_sentence" ? ( // <--- NEW CHECK
+                    <ListeningSentenceBuilder
+                        question={currentQuestion}
+                        onComplete={handleInteractiveDone}
+                        onMistake={handleInteractiveMistake}
                     />
                 ) : (
                     // Used new MultipleChoiceQuestion component here
-                    <MultipleChoiceQuestion 
+                    <MultipleChoiceQuestion
                         question={currentQuestion}
                         selectedAnswerIndex={selectedAnswerIndex}
                         onOptionPress={handleOptionPress}
@@ -621,9 +666,15 @@ const Test = () => {
             </ScrollView>
 
             <View style={styles.bottomContainer}>
-                {currentQuestion.type === "matching" || currentQuestion.type === "sentence" ? (
+                {currentQuestion.type === "matching" ||
+                currentQuestion.type === "sentence" ||
+                currentQuestion.type === "listening_sentence" ? (
                     isInteractiveComplete && (
-                        <Animatable.View key={`interactive-${currentQuestionIndex}`} animation="slideInUp" duration={300}>
+                        <Animatable.View
+                            key={`interactive-${currentQuestionIndex}`}
+                            animation="slideInUp"
+                            duration={300}
+                        >
                             <TouchableOpacity style={styles.bottomButton} onPress={handleNextPress}>
                                 <Text style={styles.bottomButtonText}>Next Question</Text>
                             </TouchableOpacity>
@@ -640,29 +691,22 @@ const Test = () => {
                         </TouchableOpacity>
                     </Animatable.View>
                 ) : (
-                    <Animatable.View
-                        ref={bottomSheetRef}
-                        animation="slideInUp"
-                        duration={300}
-                    >
-                        <TouchableOpacity
-                            style={styles.bottomButton}
-                            onPress={handleNextPress}
-                        >
+                    <Animatable.View ref={bottomSheetRef} animation="slideInUp" duration={300}>
+                        <TouchableOpacity style={styles.bottomButton} onPress={handleNextPress}>
                             <Text style={styles.bottomButtonText}>Next Question</Text>
                         </TouchableOpacity>
                     </Animatable.View>
                 )}
             </View>
 
-            <ProModal 
-                visible={proModalVisible} 
-                onClose={() => setProModalVisible(false)} 
-                onGoPro={handleGoProNav} 
+            <ProModal
+                visible={proModalVisible}
+                onClose={() => setProModalVisible(false)}
+                onGoPro={handleGoProNav}
                 featureTitle="AI Features"
                 featureDescription="Unlock Grammar Coach and Pronunciation Practice with Pro."
             />
-            <StatusModal 
+            <StatusModal
                 visible={statusModalVisible}
                 type={statusConfig.type}
                 title={statusConfig.title}
@@ -679,10 +723,10 @@ export default Test;
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: "#2C2B29", justifyContent: "space-between" },
     scrollContent: { padding: 20, paddingTop: 0, paddingBottom: 40 },
-    
+
     bookmarkContainer: { width: "100%", alignItems: "flex-end", paddingTop: 10, paddingBottom: 5 },
     bookmarkButton: { padding: 5 },
-    
+
     progressContainer: { width: "100%", paddingVertical: 10, marginBottom: 10 },
     progressText: { color: "#AAAAAA", fontSize: 14, fontWeight: "bold", textAlign: "right", marginBottom: 5 },
     progressBarTrack: { height: 10, width: "100%", backgroundColor: "#383633", borderRadius: 5 },
@@ -691,28 +735,60 @@ const styles = StyleSheet.create({
     congratsTitle: { fontSize: 32, fontWeight: "bold", color: "#81B64C", marginBottom: 20 },
     congratsSubtitle: { fontSize: 18, color: "#AAAAAA", marginBottom: 10 },
     congratsTestTitle: { fontSize: 24, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" },
-    
-    coachContainer: { alignItems: 'center', marginBottom: 15 },
-    coachButton: { flexDirection: 'row', backgroundColor: "#7B61FF", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, alignItems: 'center', shadowColor: "#7B61FF", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 4, elevation: 5 },
+
+    coachContainer: { alignItems: "center", marginBottom: 15 },
+    coachButton: {
+        flexDirection: "row",
+        backgroundColor: "#7B61FF",
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 20,
+        alignItems: "center",
+        shadowColor: "#7B61FF",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.4,
+        shadowRadius: 4,
+        elevation: 5,
+    },
     coachText: { color: "#FFF", fontWeight: "bold", fontSize: 14 },
 
     bottomContainer: { width: "100%", paddingHorizontal: 20, paddingBottom: 20 },
-    
+
     bottomButton: { backgroundColor: "#81B64C", padding: 20, borderRadius: 8, width: "100%", alignItems: "center" },
-    
+
     bottomButtonText: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
     disabledButton: { backgroundColor: "#555", opacity: 0.5 },
-    modalContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0, 0, 0, 0.7)", padding: 20 },
+    modalContainer: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        padding: 20,
+    },
     modalContent: { width: "100%", backgroundColor: "#383633", borderRadius: 10, justifyContent: "space-between" },
     modalStatsContent: { padding: 20 },
     modalButtonContainer: { width: "100%", padding: 20 },
     modalSubText: { fontSize: 18, color: "#AAAAAA", textAlign: "center", marginBottom: 20, lineHeight: 25 },
-    modalButtonContainerRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", padding: 20, borderTopWidth: 1, borderColor: "#555" },
+    modalButtonContainerRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        width: "100%",
+        padding: 20,
+        borderTopWidth: 1,
+        borderColor: "#555",
+    },
     modalButton: { width: "48%" },
     buttonStartOver: { backgroundColor: "#383633", borderWidth: 1, borderColor: "#888" },
     buttonStartOverText: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
     modalTitle: { fontSize: 24, fontWeight: "bold", color: "#FFFFFF", marginBottom: 20, textAlign: "center" },
-    modalStatRow: { flexDirection: "row", justifyContent: "space-between", width: "100%", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#555" },
+    modalStatRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        width: "100%",
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: "#555",
+    },
     modalStatLabel: { fontSize: 18, color: "#AAAAAA" },
     modalStatValue: { fontSize: 18, color: "#FFFFFF", fontWeight: "bold" },
 });
