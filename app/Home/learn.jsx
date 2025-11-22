@@ -78,7 +78,7 @@ const Learn = () => {
 
     const renderTopicItem = useCallback(
         ({ item, index }) => {
-            const isLocked = !isPro && index > 0;
+            const isLocked = !isPro && index >= 5;
 
             return (
                 <LearnTopicItem
