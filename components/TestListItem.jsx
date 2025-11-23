@@ -33,7 +33,7 @@ const TestListItem = React.memo(
 
         useEffect(() => {
             if (isViewable && !hasAnimatedIn && animRef.current) {
-                animRef.current.fadeInUp(500);
+                // animRef.current.fadeInUp(500);
                 setHasAnimatedIn(true);
             }
         }, [isViewable, hasAnimatedIn]);
