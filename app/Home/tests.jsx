@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { ActivityIndicator, Dimensions, FlatList, Image, StyleSheet, Text, View } from "react-native";
 import DownloadButton from "../../components/DownloadButton";
 import ProModal from "../../components/ProModal";
+import StatusModal from "../../components/StatusModal";
 import TestListItem from "../../components/TestListItem";
 import { useMembership } from "../contexts/MembershipContext";
 import { fetchLevelData } from "../services/contentService";
@@ -15,7 +16,6 @@ const PROGRESS_KEY = "@JustLearnProgress";
 // --- LAYOUT CONSTANTS ---
 const { width } = Dimensions.get("window");
 const ITEM_SIZE = 110;
-// Calculate Amplitude: (Screen Half) - (Half Item Size) - Padding
 const X_AMPLITUDE = width / 2 - ITEM_SIZE / 2 - 15;
 
 // Image Dimensions
@@ -29,7 +29,11 @@ const Tests = () => {
     const [testsToDisplay, setTestsToDisplay] = useState([]);
     const [currentLevelTitle, setCurrentLevelTitle] = useState("");
     const [progressData, setProgressData] = useState({});
-    const [modalVisible, setModalVisible] = useState(false);
+
+    // Modals
+    const [proModalVisible, setProModalVisible] = useState(false);
+    const [sequenceModalVisible, setSequenceModalVisible] = useState(false);
+
     const [currentLevelId, setCurrentLevelId] = useState(null);
 
     useFocusEffect(
@@ -66,33 +70,35 @@ const Tests = () => {
         }, [])
     );
 
-    const handleTestPress = (test, isLocked) => {
+    const handleTestPress = (test, isLocked, isDisabled) => {
+        // Priority 1: Paywall Lock -> Show Pro Modal
         if (isLocked) {
-            setModalVisible(true);
+            setProModalVisible(true);
             return;
         }
+
+        // Priority 2: Sequential Lock -> Show Status Modal
+        if (isDisabled) {
+            setSequenceModalVisible(true);
+            return;
+        }
+
         navigation.navigate(`test`, { test: test, origin: "Tests" });
     };
 
     const handleGoProNav = () => {
-        setModalVisible(false);
+        setProModalVisible(false);
         navigation.navigate("membership");
     };
 
     // --- SNAKE LOGIC ---
     const getSnakeStyle = index => {
         const groupIndex = Math.floor(index / 6);
-        const indexInGroup = index % 6; // 0 to 5
-
-        // Even groups wave RIGHT (+), Odd groups wave LEFT (-)
+        const indexInGroup = index % 6;
         const direction = groupIndex % 2 === 0 ? 1 : -1;
-
-        // Map 0..5 to a semi-circle (0 to PI)
         const angle = (indexInGroup / 5) * Math.PI;
-
         const multiplier = Math.sin(angle);
         const translateX = multiplier * X_AMPLITUDE * direction;
-
         return { transform: [{ translateX }] };
     };
 
@@ -102,8 +108,6 @@ const Tests = () => {
             let progressPercent = 0;
             let progressText = "0%";
             let isCompleted = false;
-
-            const isLocked = !isPro && index >= 5;
 
             if (testProgress) {
                 const totalQuestions = item.questions.length;
@@ -117,35 +121,49 @@ const Tests = () => {
                 }
             }
 
+            // --- LOCK LOGIC ---
+
+            // 1. Check Previous Completion (Sequential)
+            let isPreviousCompleted = true;
+            if (index > 0) {
+                const prevItem = testsToDisplay[index - 1];
+                const prevProgress = progressData[prevItem.id];
+                if (prevProgress) {
+                    const prevTotal = prevItem.questions.length;
+                    const prevIndex = prevProgress.index;
+                    isPreviousCompleted = prevIndex >= prevTotal;
+                } else {
+                    isPreviousCompleted = false;
+                }
+            }
+
+            // 2. Paywall Lock
+            // UPDATED: First 6 tests (0,1,2,3,4,5) are free. Index >= 6 is locked.
+            const isPaywallLocked = !isPro && index >= 6;
+
+            // 3. Sequential Lock
+            // Only considered if NOT Paywall Locked (Paywall takes precedence visually)
+            const isSequentialLocked = !isPreviousCompleted;
+
             // --- DECORATION LOGIC ---
             const groupIndex = Math.floor(index / 6);
             const indexInGroup = index % 6;
-
-            // Place image at the peak item (Index 2)
             const showDecoration = indexInGroup === 2;
-
-            // Determine position to center it in the empty space
             const waveDirection = groupIndex % 2 === 0 ? 1 : -1;
-
             let decorationStyle = {};
 
             if (showDecoration) {
-                // If Wave is RIGHT (1) -> Pocket is LEFT. Center of Left quadrant = width * 0.25
-                // If Wave is LEFT (-1) -> Pocket is RIGHT. Center of Right quadrant = width * 0.75
                 const centerX = waveDirection === 1 ? width * 0.25 : width * 0.75;
-
                 decorationStyle = {
-                    left: centerX - IMG_SIZE / 2, // Center the image horizontally
-                    top: 10, // Slight vertical nudge to align with visual center of group
+                    left: centerX - IMG_SIZE / 2,
+                    top: 10,
                 };
             }
 
-            // Divider appears after every 6th item
             const isEndOfGroup = (index + 1) % 6 === 0;
 
             return (
                 <View style={styles.itemWrapper}>
-                    {/* Placeholder Image (Centered in the Pocket) */}
                     {showDecoration && (
                         <View style={[styles.decorationContainer, decorationStyle]}>
                             <Image
@@ -156,20 +174,19 @@ const Tests = () => {
                         </View>
                     )}
 
-                    {/* The Test Node */}
                     <View style={[styles.nodeContainer, getSnakeStyle(index)]}>
                         <TestListItem
                             item={item}
-                            onPress={() => handleTestPress(item, isLocked)}
+                            onPress={() => handleTestPress(item, isPaywallLocked, isSequentialLocked)}
                             isViewable={true}
                             progressPercent={progressPercent}
                             progressText={progressText}
                             isCompleted={isCompleted}
-                            isLocked={isLocked}
+                            isLocked={isPaywallLocked} // Shows Lock Icon
+                            isDisabled={isSequentialLocked} // Shows Clock Icon
                         />
                     </View>
 
-                    {/* Group Divider */}
                     {isEndOfGroup && index !== testsToDisplay.length - 1 && (
                         <View style={styles.groupDividerContainer}>
                             <View style={styles.groupDividerLine} />
@@ -211,7 +228,18 @@ const Tests = () => {
                 <Text style={styles.name}>No tests found. Check connection.</Text>
             )}
 
-            <ProModal visible={modalVisible} onClose={() => setModalVisible(false)} onGoPro={handleGoProNav} />
+            {/* Paywall Modal */}
+            <ProModal visible={proModalVisible} onClose={() => setProModalVisible(false)} onGoPro={handleGoProNav} />
+
+            {/* Sequence Modal */}
+            <StatusModal
+                visible={sequenceModalVisible}
+                type="info"
+                title="Locked"
+                message="Please finish the previous test to unlock this one."
+                confirmText="OK"
+                onConfirm={() => setSequenceModalVisible(false)}
+            />
         </View>
     );
 };
@@ -252,10 +280,9 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         zIndex: 10,
     },
-    // --- DECORATION STYLES ---
     decorationContainer: {
         position: "absolute",
-        opacity: 0.15, // Subtle watermark
+        opacity: 0.15,
         zIndex: 1,
     },
     decorationImage: {

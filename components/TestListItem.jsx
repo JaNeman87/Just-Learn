@@ -11,7 +11,7 @@ const RADIUS = (PROGRESS_SIZE - STROKE_WIDTH) / 2;
 const CIRCUMFERENCE = RADIUS * 2 * Math.PI;
 
 const TestListItem = React.memo(
-    ({ item, onPress, isViewable, progressPercent, progressText, isCompleted, isLocked }) => {
+    ({ item, onPress, isViewable, progressPercent, progressText, isCompleted, isLocked, isDisabled }) => {
         const animRef = useRef(null);
         const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
 
@@ -24,15 +24,29 @@ const TestListItem = React.memo(
             }
         }, [isViewable, hasAnimatedIn]);
 
+        // "Active" check: Not locked (paywall) and Not disabled (sequential)
+        const isNotActive = isLocked || isDisabled;
+
         return (
             <Animatable.View ref={animRef} useNativeDriver={true} style={styles.wrapper}>
                 <TouchableOpacity style={styles.touchableContainer} onPress={onPress} activeOpacity={0.7}>
-                    <View style={[styles.circleNode, isLocked ? styles.circleNodeLocked : styles.circleNodeActive]}>
+                    {/* Circle Node Style */}
+                    <View
+                        style={[
+                            styles.circleNode,
+                            isNotActive ? styles.circleNodeLocked : styles.circleNodeActive,
+                            isCompleted && styles.circleNodeCompleted, // <--- NEW STYLE
+                        ]}
+                    >
+                        {/* ICON LOGIC */}
                         {isLocked ? (
                             <Ionicons name="lock-closed" size={32} color="#555" />
+                        ) : isDisabled ? (
+                            <Ionicons name="time" size={32} color="#555" />
                         ) : isCompleted ? (
                             <Animatable.View animation="bounceIn" duration={500}>
-                                <Ionicons name="checkmark" size={48} color="#81B64C" />
+                                {/* CHANGED: Trophy Icon, White Color */}
+                                <Ionicons name="trophy" size={40} color="#FFFFFF" />
                             </Animatable.View>
                         ) : (
                             <View style={styles.progressContainer}>
@@ -69,7 +83,7 @@ const TestListItem = React.memo(
                         )}
                     </View>
 
-                    <Text style={[styles.title, isLocked && styles.titleLocked]} numberOfLines={2}>
+                    <Text style={[styles.title, isNotActive && styles.titleLocked]} numberOfLines={2}>
                         {item.title}
                     </Text>
                 </TouchableOpacity>
@@ -113,6 +127,15 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 4,
         elevation: 5,
+    },
+    // NEW STYLE FOR COMPLETED STATE
+    circleNodeCompleted: {
+        backgroundColor: "#81B64C", // Solid Green Background
+        borderColor: "#81B64C",
+        shadowColor: "#81B64C",
+        shadowOpacity: 0.8,
+        shadowRadius: 12,
+        elevation: 10,
     },
     progressContainer: {
         width: "100%",
