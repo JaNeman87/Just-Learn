@@ -2,7 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { useNavigation } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Dimensions, FlatList, Image, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Dimensions, FlatList, StyleSheet, Text, View } from "react-native"; // Removed Image
+import CartoonCharacter from "../../components/CartoonCharacter"; // <--- Import New Component
 import DownloadButton from "../../components/DownloadButton";
 import ProModal from "../../components/ProModal";
 import StatusModal from "../../components/StatusModal";
@@ -18,8 +19,8 @@ const { width } = Dimensions.get("window");
 const ITEM_SIZE = 110;
 const X_AMPLITUDE = width / 2 - ITEM_SIZE / 2 - 15;
 
-// Image Dimensions
-const IMG_SIZE = 340;
+// Image Dimensions (Used for the SVG size now)
+const IMG_SIZE = 240; // Slightly adjusted for SVG scaling
 
 const Tests = () => {
     const navigation = useNavigation();
@@ -30,7 +31,6 @@ const Tests = () => {
     const [currentLevelTitle, setCurrentLevelTitle] = useState("");
     const [progressData, setProgressData] = useState({});
 
-    // Modals
     const [proModalVisible, setProModalVisible] = useState(false);
     const [sequenceModalVisible, setSequenceModalVisible] = useState(false);
 
@@ -71,18 +71,14 @@ const Tests = () => {
     );
 
     const handleTestPress = (test, isLocked, isDisabled) => {
-        // Priority 1: Paywall Lock -> Show Pro Modal
         if (isLocked) {
             setProModalVisible(true);
             return;
         }
-
-        // Priority 2: Sequential Lock -> Show Status Modal
         if (isDisabled) {
             setSequenceModalVisible(true);
             return;
         }
-
         navigation.navigate(`test`, { test: test, origin: "Tests" });
     };
 
@@ -91,7 +87,6 @@ const Tests = () => {
         navigation.navigate("membership");
     };
 
-    // --- SNAKE LOGIC ---
     const getSnakeStyle = index => {
         const groupIndex = Math.floor(index / 6);
         const indexInGroup = index % 6;
@@ -121,9 +116,6 @@ const Tests = () => {
                 }
             }
 
-            // --- LOCK LOGIC ---
-
-            // 1. Check Previous Completion (Sequential)
             let isPreviousCompleted = true;
             if (index > 0) {
                 const prevItem = testsToDisplay[index - 1];
@@ -137,15 +129,10 @@ const Tests = () => {
                 }
             }
 
-            // 2. Paywall Lock
-            // UPDATED: First 6 tests (0,1,2,3,4,5) are free. Index >= 6 is locked.
             const isPaywallLocked = !isPro && index >= 6;
-
-            // 3. Sequential Lock
-            // Only considered if NOT Paywall Locked (Paywall takes precedence visually)
             const isSequentialLocked = !isPreviousCompleted;
 
-            // --- DECORATION LOGIC ---
+            // Decoration Logic
             const groupIndex = Math.floor(index / 6);
             const indexInGroup = index % 6;
             const showDecoration = indexInGroup === 2;
@@ -156,7 +143,7 @@ const Tests = () => {
                 const centerX = waveDirection === 1 ? width * 0.25 : width * 0.75;
                 decorationStyle = {
                     left: centerX - IMG_SIZE / 2,
-                    top: 10,
+                    top: -20, // Adjusted top for the SVG character
                 };
             }
 
@@ -164,13 +151,10 @@ const Tests = () => {
 
             return (
                 <View style={styles.itemWrapper}>
+                    {/* SVG Decoration */}
                     {showDecoration && (
                         <View style={[styles.decorationContainer, decorationStyle]}>
-                            <Image
-                                source={require("../../assets/images/man_in_suit.png")}
-                                style={styles.decorationImage}
-                                resizeMode="contain"
-                            />
+                            <CartoonCharacter width={IMG_SIZE} height={IMG_SIZE} color="#81B64C" />
                         </View>
                     )}
 
@@ -182,8 +166,8 @@ const Tests = () => {
                             progressPercent={progressPercent}
                             progressText={progressText}
                             isCompleted={isCompleted}
-                            isLocked={isPaywallLocked} // Shows Lock Icon
-                            isDisabled={isSequentialLocked} // Shows Clock Icon
+                            isLocked={isPaywallLocked}
+                            isDisabled={isSequentialLocked}
                         />
                     </View>
 
@@ -228,10 +212,8 @@ const Tests = () => {
                 <Text style={styles.name}>No tests found. Check connection.</Text>
             )}
 
-            {/* Paywall Modal */}
             <ProModal visible={proModalVisible} onClose={() => setProModalVisible(false)} onGoPro={handleGoProNav} />
 
-            {/* Sequence Modal */}
             <StatusModal
                 visible={sequenceModalVisible}
                 type="info"
@@ -282,14 +264,10 @@ const styles = StyleSheet.create({
     },
     decorationContainer: {
         position: "absolute",
-        opacity: 0.75,
+        opacity: 0.75, // Keep the watermark effect
         zIndex: 1,
     },
-    decorationImage: {
-        width: IMG_SIZE,
-        height: IMG_SIZE,
-        // tintColor: "#81B64C",
-    },
+    // decorationImage style is no longer needed but harmless
     name: {
         flex: 1,
         fontSize: 18,
