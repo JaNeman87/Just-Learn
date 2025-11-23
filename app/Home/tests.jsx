@@ -167,7 +167,7 @@ const Tests = () => {
                     {showDecoration && (
                         <View style={[styles.decorationContainer, decorationStyle]}>
                             <Image
-                                source={require("../../assets/images/thinking_man.png")}
+                                source={require("../../assets/images/man_in_suit.png")}
                                 style={styles.decorationImage}
                                 resizeMode="contain"
                             />
@@ -282,13 +282,13 @@ const styles = StyleSheet.create({
     },
     decorationContainer: {
         position: "absolute",
-        opacity: 0.15,
+        opacity: 0.75,
         zIndex: 1,
     },
     decorationImage: {
         width: IMG_SIZE,
         height: IMG_SIZE,
-        tintColor: "#81B64C",
+        // tintColor: "#81B64C",
     },
     name: {
         flex: 1,
