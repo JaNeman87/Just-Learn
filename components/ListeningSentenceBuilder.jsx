@@ -1,10 +1,10 @@
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import { MotiView } from "moti";
 import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, Vibration, View } from "react-native";
-import * as Animatable from "react-native-animatable"; // Ensure this is installed
+import * as Animatable from "react-native-animatable";
 import { Layout } from "react-native-reanimated";
 
 const shuffle = array => [...array].sort(() => Math.random() - 0.5);
@@ -20,7 +20,6 @@ const ListeningSentenceBuilder = ({ question, onComplete, onMistake }) => {
     const wordMap = useRef(new Map());
 
     useEffect(() => {
-        // Guard clause to prevent crash if question is undefined
         if (!question || !question.options) return;
 
         const initialWordObjects = question.options.map((word, index) => ({
@@ -36,8 +35,6 @@ const ListeningSentenceBuilder = ({ question, onComplete, onMistake }) => {
         setPlacedWords({});
         setWrongWordId(null);
         setIsSentenceComplete(false);
-
-        // REMOVED: Auto-play logic here
     }, [question]);
 
     const playAudio = (rate = 0.9) => {
@@ -78,7 +75,8 @@ const ListeningSentenceBuilder = ({ question, onComplete, onMistake }) => {
     if (!question) return null;
 
     return (
-        <Animatable.View animation="slideInUp" duration={600} style={styles.container} useNativeDriver={true}>
+        // Changed from Animatable.View to View to remove slideInUp
+        <View style={styles.container}>
             <Text style={styles.instruction}>Tap the speaker to listen</Text>
 
             {/* Audio Controls */}
@@ -88,7 +86,7 @@ const ListeningSentenceBuilder = ({ question, onComplete, onMistake }) => {
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.turtleButton} onPress={() => playAudio(0.5)}>
-                    <Ionicons name="tortoise" size={24} color="#81B64C" />
+                    <MaterialCommunityIcons name="tortoise" size={24} color="#81B64C" />
                 </TouchableOpacity>
             </View>
 
@@ -109,7 +107,6 @@ const ListeningSentenceBuilder = ({ question, onComplete, onMistake }) => {
                                     </View>
                                 </MotiView>
                             ) : (
-                                // FIXED: Transparent background removes "boxes"
                                 <View style={styles.wordSlotEmpty} />
                             )}
                             <View style={[styles.blankLine, { width: word.length * 12 + 20 }]} />
@@ -126,9 +123,7 @@ const ListeningSentenceBuilder = ({ question, onComplete, onMistake }) => {
                         <MotiView
                             key={word.id}
                             layout={Layout.springify()}
-                            from={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            delay={index * 50} // Staggered entrance
+                            // Removed from/animate/delay props to stop entrance animation
                             style={{ margin: 6 }}
                         >
                             <Animatable.View ref={el => (wordRefs.current[word.id] = el)}>
@@ -143,7 +138,7 @@ const ListeningSentenceBuilder = ({ question, onComplete, onMistake }) => {
                     );
                 })}
             </View>
-        </Animatable.View>
+        </View>
     );
 };
 
@@ -192,7 +187,6 @@ const styles = StyleSheet.create({
     },
     slotContainer: { alignItems: "center", marginHorizontal: 4, marginBottom: 12 },
 
-    // FIXED: Transparent background
     wordSlotEmpty: {
         height: 46,
         width: 40,
