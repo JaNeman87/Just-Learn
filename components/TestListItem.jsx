@@ -1,134 +1,31 @@
-// import { Ionicons } from "@expo/vector-icons";
-// import React, { useEffect, useRef, useState } from "react";
-// import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-// import * as Animatable from "react-native-animatable";
-// import Svg, { Circle } from "react-native-svg";
-
-// const CIRCLE_SIZE = 40;
-// const STROKE_WIDTH = 4;
-// const RADIUS = (CIRCLE_SIZE - STROKE_WIDTH) / 2;
-// const CIRCUMFERENCE = RADIUS * 2 * Math.PI;
-
-// const TestListItem = React.memo(({ item, onPress, isViewable, progressPercent, progressText, isCompleted }) => {
-//     // 1. Add isCompleted
-//     const animRef = useRef(null);
-//     const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
-
-//     const strokeDashoffset = CIRCUMFERENCE - (CIRCUMFERENCE * progressPercent) / 100;
-
-//     useEffect(() => {
-//         if (isViewable && !hasAnimatedIn && animRef.current) {
-//             animRef.current.fadeInUp(500);
-//             setHasAnimatedIn(true);
-//         }
-//     }, [isViewable, hasAnimatedIn]);
-
-//     return (
-//         <Animatable.View ref={animRef} useNativeDriver={true} style={[styles.animatableView, { marginBottom: 15 }]}>
-//             <TouchableOpacity style={styles.testItem} onPress={onPress}>
-//                 <View style={styles.iconContainer}>
-//                     {/* --- 2. NEW RENDER LOGIC --- */}
-//                     {isCompleted ? (
-//                         // 1. Show Checkmark if completed
-//                         <Animatable.View animation="bounceIn" duration={500}>
-//                             <Ionicons name="checkmark-circle" size={CIRCLE_SIZE} color="#81B64C" />
-//                         </Animatable.View>
-//                     ) : progressPercent > 0 ? (
-//                         // 2. Show Progress Circle if in-progress
-//                         <>
-//                             <Svg width={CIRCLE_SIZE} height={CIRCLE_SIZE} viewBox={`0 0 ${CIRCLE_SIZE} ${CIRCLE_SIZE}`}>
-//                                 <Circle
-//                                     stroke="#555"
-//                                     cx={CIRCLE_SIZE / 2}
-//                                     cy={CIRCLE_SIZE / 2}
-//                                     r={RADIUS}
-//                                     strokeWidth={STROKE_WIDTH}
-//                                 />
-//                                 <Circle
-//                                     stroke="#81B64C"
-//                                     cx={CIRCLE_SIZE / 2}
-//                                     cy={CIRCLE_SIZE / 2}
-//                                     r={RADIUS}
-//                                     strokeWidth={STROKE_WIDTH}
-//                                     strokeDasharray={CIRCUMFERENCE}
-//                                     strokeDashoffset={strokeDashoffset}
-//                                     strokeLinecap="round"
-//                                     transform={`rotate(-90 ${CIRCLE_SIZE / 2} ${CIRCLE_SIZE / 2})`}
-//                                 />
-//                             </Svg>
-//                             <Text style={styles.progressText}>{Math.floor(progressPercent)}%</Text>
-//                         </>
-//                     ) : (
-//                         // 3. Show Play Icon if not started
-//                         <Ionicons name="play-circle-outline" size={CIRCLE_SIZE} color="#81B64C" />
-//                     )}
-//                     {/* --- END NEW RENDER LOGIC --- */}
-//                 </View>
-
-//                 <Text style={styles.name}>{item.title}</Text>
-//                 <Ionicons name="chevron-forward-outline" size={24} color="#555" />
-//             </TouchableOpacity>
-//         </Animatable.View>
-//     );
-// });
-
-// const styles = StyleSheet.create({
-//     animatableView: {
-//         opacity: 0,
-//         transform: [{ translateY: 50 }],
-//     },
-//     testItem: {
-//         backgroundColor: "#383633",
-//         padding: 20,
-//         borderRadius: 10,
-//         width: "100%",
-//         borderWidth: 1,
-//         borderColor: "#444",
-//         flexDirection: "row",
-//         alignItems: "center",
-//         shadowColor: "#81B64C",
-//         shadowOffset: { width: 0, height: 2 },
-//         shadowOpacity: 0.3,
-//         shadowRadius: 4,
-//         elevation: 5,
-//     },
-//     iconContainer: {
-//         width: CIRCLE_SIZE,
-//         height: CIRCLE_SIZE,
-//         justifyContent: "center",
-//         alignItems: "center",
-//         marginRight: 15,
-//     },
-//     progressText: {
-//         position: "absolute",
-//         color: "#81B64C",
-//         fontSize: 12,
-//         fontWeight: "bold",
-//     },
-//     name: {
-//         flex: 1,
-//         fontSize: 18,
-//         color: "#FFFFFF",
-//         fontWeight: "500",
-//     },
-// });
-
-// export default TestListItem;
-
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Animatable from "react-native-animatable";
 import Svg, { Circle } from "react-native-svg";
 
-const CIRCLE_SIZE = 40;
-const STROKE_WIDTH = 4;
-const RADIUS = (CIRCLE_SIZE - STROKE_WIDTH) / 2;
+const ITEM_SIZE = 110;
+const PROGRESS_SIZE = 100;
+const STROKE_WIDTH = 5;
+const RADIUS = (PROGRESS_SIZE - STROKE_WIDTH) / 2;
 const CIRCUMFERENCE = RADIUS * 2 * Math.PI;
 
-// 1. Add isLocked to props
+// 1. Ring Ripple: Expands outward and fades
+const ringPulseAnimation = {
+    0: { transform: [{ scale: 1 }], opacity: 0.6 },
+    1: { transform: [{ scale: 1.5 }], opacity: 0 },
+};
+
+// 2. Trophy Pulse: Scales up and down (Heartbeat)
+const trophyPulseAnimation = {
+    0: { transform: [{ scale: 1 }] },
+    0.5: { transform: [{ scale: 1.2 }] }, // Peak scale
+    1: { transform: [{ scale: 1 }] },
+};
+
 const TestListItem = React.memo(
-    ({ item, onPress, isViewable, progressPercent, progressText, isCompleted, isLocked }) => {
+    ({ item, onPress, isViewable, progressPercent, progressText, isCompleted, isLocked, isDisabled }) => {
         const animRef = useRef(null);
         const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
 
@@ -136,71 +33,106 @@ const TestListItem = React.memo(
 
         useEffect(() => {
             if (isViewable && !hasAnimatedIn && animRef.current) {
-                animRef.current.fadeInUp(500);
+                // animRef.current.fadeInUp(500);
                 setHasAnimatedIn(true);
             }
         }, [isViewable, hasAnimatedIn]);
 
+        const isNotActive = isLocked || isDisabled;
+
+        const renderContent = () => {
+            if (isLocked) return <Ionicons name="lock-closed" size={32} color="#555" />;
+            if (isDisabled) return <Ionicons name="time" size={32} color="#555" />;
+
+            if (isCompleted) {
+                return (
+                    // UPDATED: Use custom animation with matching duration
+                    <Animatable.View
+                        animation={trophyPulseAnimation}
+                        easing="ease-out"
+                        iterationCount="infinite"
+                        duration={2000} // Matches Ring Duration
+                    >
+                        <Ionicons name="trophy" size={44} color="#FFFFFF" />
+                    </Animatable.View>
+                );
+            }
+            return (
+                <View style={styles.progressContainer}>
+                    {progressPercent > 0 && (
+                        <Svg
+                            width={PROGRESS_SIZE}
+                            height={PROGRESS_SIZE}
+                            viewBox={`0 0 ${PROGRESS_SIZE} ${PROGRESS_SIZE}`}
+                            style={styles.svgOverlay}
+                        >
+                            <Circle
+                                stroke="#333"
+                                cx={PROGRESS_SIZE / 2}
+                                cy={PROGRESS_SIZE / 2}
+                                r={RADIUS}
+                                strokeWidth={STROKE_WIDTH}
+                            />
+                            <Circle
+                                stroke="#81B64C"
+                                cx={PROGRESS_SIZE / 2}
+                                cy={PROGRESS_SIZE / 2}
+                                r={RADIUS}
+                                strokeWidth={STROKE_WIDTH}
+                                strokeDasharray={CIRCUMFERENCE}
+                                strokeDashoffset={strokeDashoffset}
+                                strokeLinecap="round"
+                                transform={`rotate(-90 ${PROGRESS_SIZE / 2} ${PROGRESS_SIZE / 2})`}
+                                fill="transparent"
+                            />
+                        </Svg>
+                    )}
+                    <Ionicons name="play" size={36} color={progressPercent > 0 ? "#fff" : "#81B64C"} />
+                </View>
+            );
+        };
+
         return (
-            <Animatable.View ref={animRef} useNativeDriver={true} style={[styles.animatableView, { marginBottom: 15 }]}>
-                {/* 2. Pass isLocked to style to reduce opacity if locked */}
-                <TouchableOpacity
-                    style={[styles.testItem, isLocked && styles.testItemLocked]}
-                    onPress={onPress}
-                    activeOpacity={0.7}
-                >
-                    <View style={styles.iconContainer}>
-                        {/* 3. RENDER LOGIC PRIORITY: Locked > Completed > In Progress > Not Started */}
-                        {isLocked ? (
-                            <View style={styles.lockedCircle}>
-                                <Ionicons name="lock-closed" size={20} color="#888" />
-                            </View>
-                        ) : isCompleted ? (
-                            <Animatable.View animation="bounceIn" duration={500}>
-                                <Ionicons name="checkmark-circle" size={CIRCLE_SIZE} color="#81B64C" />
-                            </Animatable.View>
-                        ) : progressPercent > 0 ? (
-                            <>
-                                <Svg
-                                    width={CIRCLE_SIZE}
-                                    height={CIRCLE_SIZE}
-                                    viewBox={`0 0 ${CIRCLE_SIZE} ${CIRCLE_SIZE}`}
-                                >
-                                    <Circle
-                                        stroke="#555"
-                                        cx={CIRCLE_SIZE / 2}
-                                        cy={CIRCLE_SIZE / 2}
-                                        r={RADIUS}
-                                        strokeWidth={STROKE_WIDTH}
-                                    />
-                                    <Circle
-                                        stroke="#81B64C"
-                                        cx={CIRCLE_SIZE / 2}
-                                        cy={CIRCLE_SIZE / 2}
-                                        r={RADIUS}
-                                        strokeWidth={STROKE_WIDTH}
-                                        strokeDasharray={CIRCUMFERENCE}
-                                        strokeDashoffset={strokeDashoffset}
-                                        strokeLinecap="round"
-                                        transform={`rotate(-90 ${CIRCLE_SIZE / 2} ${CIRCLE_SIZE / 2})`}
-                                    />
-                                </Svg>
-                                <Text style={styles.progressText}>{Math.floor(progressPercent)}%</Text>
-                            </>
+            <Animatable.View ref={animRef} useNativeDriver={true} style={styles.wrapper}>
+                <TouchableOpacity style={styles.touchableContainer} onPress={onPress} activeOpacity={0.7}>
+                    <View style={styles.nodeAnchor}>
+                        {/* Ring Ripple */}
+                        {isCompleted && (
+                            <Animatable.View
+                                animation={ringPulseAnimation}
+                                iterationCount="infinite"
+                                duration={2000} // Matches Trophy Duration
+                                easing="ease-out"
+                                style={styles.pulseRing}
+                                useNativeDriver={true}
+                            />
+                        )}
+
+                        {/* Main Circle Node */}
+                        {isCompleted ? (
+                            <LinearGradient
+                                colors={["#96d15c", "#70a040"]}
+                                style={[styles.circleNode, styles.circleNodeCompleted]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                            >
+                                {renderContent()}
+                            </LinearGradient>
                         ) : (
-                            <Ionicons name="play-circle-outline" size={CIRCLE_SIZE} color="#81B64C" />
+                            <View
+                                style={[
+                                    styles.circleNode,
+                                    isNotActive ? styles.circleNodeLocked : styles.circleNodeActive,
+                                ]}
+                            >
+                                {renderContent()}
+                            </View>
                         )}
                     </View>
 
-                    {/* 4. Change Text Color if Locked */}
-                    <Text style={[styles.name, isLocked && styles.textLocked]}>{item.title}</Text>
-
-                    {/* 5. Change Chevron to Lock if Locked (Optional, but looks nice) */}
-                    <Ionicons
-                        name={isLocked ? "lock-closed-outline" : "chevron-forward-outline"}
-                        size={24}
-                        color={isLocked ? "#555" : "#555"}
-                    />
+                    <Text style={[styles.title, isNotActive && styles.titleLocked]} numberOfLines={2}>
+                        {item.title}
+                    </Text>
                 </TouchableOpacity>
             </Animatable.View>
         );
@@ -208,61 +140,87 @@ const TestListItem = React.memo(
 );
 
 const styles = StyleSheet.create({
-    animatableView: {
-        opacity: 0,
-        transform: [{ translateY: 50 }],
-    },
-    testItem: {
-        backgroundColor: "#383633",
-        padding: 20,
-        borderRadius: 10,
-        width: "100%",
-        borderWidth: 1,
-        borderColor: "#444",
-        flexDirection: "row",
+    wrapper: {
         alignItems: "center",
+        justifyContent: "center",
+        width: 140,
+    },
+    touchableContainer: {
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    nodeAnchor: {
+        width: ITEM_SIZE,
+        height: ITEM_SIZE,
+        justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 12,
+        position: "relative",
+    },
+    pulseRing: {
+        position: "absolute",
+        width: ITEM_SIZE,
+        height: ITEM_SIZE,
+        borderRadius: ITEM_SIZE / 2,
+        backgroundColor: "#81B64C",
+        zIndex: -1,
+    },
+    circleNode: {
+        width: ITEM_SIZE,
+        height: ITEM_SIZE,
+        borderRadius: ITEM_SIZE / 2,
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 2,
+    },
+    circleNodeActive: {
+        backgroundColor: "#2C2B29",
+        borderColor: "#81B64C",
         shadowColor: "#81B64C",
-        shadowOffset: { width: 0, height: 2 },
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 10,
+        elevation: 15,
+    },
+    circleNodeLocked: {
+        backgroundColor: "#222",
+        borderColor: "#444",
+        shadowColor: "#000",
         shadowOpacity: 0.3,
         shadowRadius: 4,
         elevation: 5,
     },
-    // Dim the background slightly if locked
-    testItemLocked: {
-        backgroundColor: "#2a2927",
-        borderColor: "#333",
-        shadowOpacity: 0, // Remove glow
+    circleNodeCompleted: {
+        borderColor: "#FFFFFF",
+        borderWidth: 4,
+        shadowColor: "#81B64C",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 10,
+        elevation: 20,
     },
-    iconContainer: {
-        width: CIRCLE_SIZE,
-        height: CIRCLE_SIZE,
-        justifyContent: "center",
-        alignItems: "center",
-        marginRight: 15,
-    },
-    lockedCircle: {
-        width: CIRCLE_SIZE,
-        height: CIRCLE_SIZE,
-        borderRadius: CIRCLE_SIZE / 2,
-        borderWidth: 2,
-        borderColor: "#555",
+    progressContainer: {
+        width: "100%",
+        height: "100%",
         justifyContent: "center",
         alignItems: "center",
     },
-    progressText: {
+    svgOverlay: {
         position: "absolute",
-        color: "#81B64C",
-        fontSize: 12,
-        fontWeight: "bold",
     },
-    name: {
-        flex: 1,
-        fontSize: 18,
-        color: "#FFFFFF",
+    title: {
+        fontSize: 14,
+        color: "#fff",
+        textAlign: "center",
+        fontWeight: "700",
+        maxWidth: 130,
+        textShadowColor: "rgba(0, 0, 0, 0.75)",
+        textShadowOffset: { width: -1, height: 1 },
+        textShadowRadius: 10,
+    },
+    titleLocked: {
+        color: "#666",
         fontWeight: "500",
-    },
-    textLocked: {
-        color: "#888", // Dim text color
     },
 });
 
