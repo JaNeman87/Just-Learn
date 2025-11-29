@@ -2,16 +2,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { useNavigation } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Dimensions, FlatList, StyleSheet, Text, View } from "react-native";
 import LearnTopicItem from "../../components/LearnTopicItem";
 import ProModal from "../../components/ProModal";
 import { useMembership } from "../contexts/MembershipContext";
 
-// 1. Import Service & Download Button
+import CartoonCharacter from "../../components/CartoonCharacter";
 import DownloadButton from "../../components/DownloadButton";
 import { fetchLevelData } from "../services/contentService";
 
 const LEVEL_KEY = "@JustLearn:selectedLevel";
+const { width } = Dimensions.get("window");
 
 const Learn = () => {
     const navigation = useNavigation();
@@ -20,24 +21,16 @@ const Learn = () => {
     const [loading, setLoading] = useState(true);
     const [topicsToDisplay, setTopicsToDisplay] = useState([]);
     const [currentLevelTitle, setCurrentLevelTitle] = useState("");
-    const [viewableItems, setViewableItems] = useState(new Set());
     const [modalVisible, setModalVisible] = useState(false);
-
-    // 2. State for Level ID
     const [currentLevelId, setCurrentLevelId] = useState(null);
 
     useFocusEffect(
         useCallback(() => {
-            setTopicsToDisplay([]);
-            setViewableItems(new Set());
-
             const loadData = async () => {
                 setLoading(true);
                 try {
                     const savedLevel = (await AsyncStorage.getItem(LEVEL_KEY)) || "A1";
-                    setCurrentLevelId(savedLevel); // Store ID for the button
-
-                    // Fetch Data (Checks local storage first)
+                    setCurrentLevelId(savedLevel);
                     const levelData = await fetchLevelData(savedLevel);
 
                     if (levelData) {
@@ -53,7 +46,6 @@ const Learn = () => {
                 }
                 setLoading(false);
             };
-
             loadData();
         }, [])
     );
@@ -71,25 +63,37 @@ const Learn = () => {
         navigation.navigate("membership");
     };
 
-    const onViewableItemsChanged = useCallback(({ viewableItems }) => {
-        const newViewableKeys = new Set(viewableItems.map(item => item.key));
-        setViewableItems(newViewableKeys);
-    }, []);
-
-    const renderTopicItem = useCallback(
+    const renderTimelineItem = useCallback(
         ({ item, index }) => {
             const isLocked = !isPro && index >= 5;
+            const isLast = index === topicsToDisplay.length - 1;
 
             return (
-                <LearnTopicItem
-                    item={item}
-                    onPress={() => goToFlashcards(item, isLocked)}
-                    isViewable={viewableItems.has(item.id)}
-                    isLocked={isLocked}
-                />
+                <View style={styles.timelineRow}>
+                    {/* --- LEFT: The Timeline Rail --- */}
+                    <View style={styles.railContainer}>
+                        {/* Vertical Line */}
+                        {!isLast && <View style={[styles.railLine, isLocked && styles.railLineLocked]} />}
+
+                        {/* The Node (Circle) */}
+                        <View style={[styles.railNode, isLocked && styles.railNodeLocked]}>
+                            <Text style={[styles.nodeText, isLocked && styles.nodeTextLocked]}>{index + 1}</Text>
+                        </View>
+                    </View>
+
+                    {/* --- RIGHT: The Card Content --- */}
+                    <View style={styles.cardContainer}>
+                        <LearnTopicItem
+                            item={item}
+                            index={index}
+                            onPress={() => goToFlashcards(item, isLocked)}
+                            isLocked={isLocked}
+                        />
+                    </View>
+                </View>
             );
         },
-        [viewableItems, isPro]
+        [isPro, topicsToDisplay.length]
     );
 
     if (loading) {
@@ -102,24 +106,28 @@ const Learn = () => {
 
     return (
         <View style={styles.container}>
-            {/* 3. Header with Download Button */}
+            {/* Background Decoration */}
+            <View style={styles.bgDecoration}>
+                <CartoonCharacter width={width * 0.9} height={width * 0.9} color="#81B64C" />
+            </View>
+
             <View style={styles.headerContainer}>
-                <Text style={styles.titleText}>{currentLevelTitle}</Text>
+                <View>
+                    <Text style={styles.subHeader}>CURRENT PATH</Text>
+                    <Text style={styles.titleText}>{currentLevelTitle}</Text>
+                </View>
                 <DownloadButton levelId={currentLevelId} />
             </View>
 
             {topicsToDisplay.length > 0 ? (
                 <FlatList
                     data={topicsToDisplay}
-                    renderItem={renderTopicItem}
+                    renderItem={renderTimelineItem}
                     keyExtractor={item => item.id}
                     contentContainerStyle={styles.scrollContent}
                     showsVerticalScrollIndicator={false}
-                    onViewableItemsChanged={onViewableItemsChanged}
-                    viewabilityConfig={{
-                        itemVisiblePercentThreshold: 20,
-                    }}
-                    extraData={isPro}
+                    // Optional: Add a footer space
+                    ListFooterComponent={<View style={{ height: 100 }} />}
                 />
             ) : (
                 <Text style={styles.noTopicsText}>No topics found. Check internet connection.</Text>
@@ -135,26 +143,40 @@ export default Learn;
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#2C2B29",
+        backgroundColor: "#1a1917", // Slightly darker for contrast with cards
     },
-    // 4. New Header Style
+    bgDecoration: {
+        position: "absolute",
+        bottom: -50,
+        right: -100,
+        opacity: 0.06,
+        transform: [{ rotate: "-10deg" }],
+    },
     headerContainer: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        paddingTop: 40,
-        paddingBottom: 20,
-        paddingHorizontal: 20,
+        paddingTop: 50,
+        paddingBottom: 10,
+        paddingHorizontal: 24,
+        backgroundColor: "#1a1917",
+        zIndex: 10,
+    },
+    subHeader: {
+        fontSize: 12,
+        color: "#81B64C",
+        fontWeight: "700",
+        letterSpacing: 1.5,
+        marginBottom: 2,
     },
     titleText: {
         color: "#fff",
-        fontSize: 24,
-        fontWeight: "bold",
-        flex: 1,
+        fontSize: 28,
+        fontWeight: "800",
     },
     scrollContent: {
-        padding: 20,
-        paddingTop: 0,
+        paddingHorizontal: 20,
+        paddingTop: 20,
     },
     noTopicsText: {
         flex: 1,
@@ -162,5 +184,60 @@ const styles = StyleSheet.create({
         color: "#AAAAAA",
         textAlign: "center",
         marginTop: 50,
+    },
+    // --- Timeline Styles ---
+    timelineRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+    },
+    railContainer: {
+        width: 50,
+        alignItems: "center",
+        marginRight: 10,
+    },
+    railLine: {
+        position: "absolute",
+        top: 40, // Start below the node
+        bottom: -20, // Extend to next item
+        width: 2,
+        backgroundColor: "#81B64C",
+        zIndex: -1,
+        opacity: 0.5,
+    },
+    railLineLocked: {
+        backgroundColor: "#444",
+    },
+    railNode: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: "#81B64C",
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 3,
+        borderColor: "#1a1917", // Creates a "gap" effect
+        shadowColor: "#81B64C",
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 8,
+        elevation: 5,
+        zIndex: 2,
+    },
+    railNodeLocked: {
+        backgroundColor: "#333",
+        shadowOpacity: 0,
+        borderColor: "#1a1917",
+    },
+    nodeText: {
+        color: "#1a1917",
+        fontSize: 14,
+        fontWeight: "bold",
+    },
+    nodeTextLocked: {
+        color: "#666",
+    },
+    cardContainer: {
+        flex: 1,
+        paddingTop: 0, // Aligns card with the node
     },
 });
